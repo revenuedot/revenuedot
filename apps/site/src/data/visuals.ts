@@ -21,10 +21,8 @@ export type FeatureKey =
   | "customer"
   | "importer"
   | "dual-run"
-  | "cloud-billing"
   | "product-editor"
   | "ai"
-  | "self-host"
   | "export-move"
   | "enterprise";
 
@@ -207,15 +205,6 @@ export const VISUALS: Record<FeatureKey, Visual> = {
     },
     docs: "https://revenuedot.app/docs/migrate/dual-run",
   },
-  "cloud-billing": {
-    title: "Cloud billing with the $999 cap",
-    shot: {
-      ...screens("cloud-billing"),
-      alt: "The RevenueDot Cloud Billing page for an account on Cloud Standard: $42,000 tracked revenue in October, a bill so far of $160 (0.5% above $10,000, at most $999), the tracked revenue by project, and the Cloud Free, Cloud Standard (current) and Enterprise plan cards.",
-      caption: "Captured from the real RevenueDot Cloud billing page with example revenue.",
-    },
-    docs: "https://revenuedot.app/docs/guides/cloud-billing",
-  },
   "product-editor": {
     title: "The product editor",
     shot: {
@@ -236,15 +225,6 @@ export const VISUALS: Record<FeatureKey, Visual> = {
     clip: { name: "revenuedot-loop-ai-v1", alt: "The RevenueDot AI page: the question 'How is revenue doing this month?' is typed and answered with the month's revenue, MRR, new and churned subscribers and a comparison with last month.", caption: DEMO_CLIP },
     video: "revenuedot-chatgpt-demo",
     docs: "https://revenuedot.app/docs/guides/revenuedot-ai",
-  },
-  "self-host": {
-    title: "Server you run yourself",
-    shot: {
-      ...screens("self-host"),
-      alt: "The Billing page of a self-hosted RevenueDot server: the owned project Scanner on the Self-hosted plan and the line 'Billing is only on RevenueDot Cloud. This server is self-hosted: free and unmetered, with no limits.'",
-      caption: "Captured from a self-hosted RevenueDot server running the same dashboard.",
-    },
-    docs: "https://revenuedot.app/docs/guides/self-hosting",
   },
   "export-move": {
     title: "Export and move",

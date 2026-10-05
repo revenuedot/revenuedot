@@ -173,7 +173,7 @@ for (const [p, label, title, s] of [
   ["/features", "Features", "Everything a subscription app needs", "paywalls-editor-light.png"],
   ["/solutions", "Solutions", "A path for every kind of app", "screens/overview-light.png"],
   ["/", "Open source", "In-app purchases and subscriptions for every app", "screens/overview-light.png"],
-  ["/pricing", "Pricing", "Free on Cloud up to $10K a month", "screens/overview-light.png"],
+  ["/pricing", "Pricing", "Start for free, capped at $999 a month", "screens/overview-light.png"],
   ["/migrate-from-revenuecat", "Migrate", "Move off RevenueCat in an afternoon", "screens/customers-light.png"],
   ["/self-host", "Self-host", "Run it on your own servers", "dashboard-light.png"],
   ["/revenuecat-mcp", "MCP · 38 tools", "RevenueCat MCP server, official and open source", "screens/mcp/claude-connector-tools.png"],
@@ -188,7 +188,7 @@ add("/add-in-app-purchases", page(`${chrome("New to in-app purchases", "Add subs
 {
   const fees = await load("compare.ts", "CHEAPER_FEES");
   const row = fees.rows.find((r) => /100,000/.test(r[0]));
-  const keep = ["RevenueCat", "Qonversion", "Superwall", "RevenueDot Cloud", "RevenueDot self-host"];
+  const keep = ["RevenueCat", "Qonversion", "Superwall", "RevenueDot"];
   const idx = fees.head.map((h, i) => [h, i]).filter(([h]) => keep.some((k) => h.startsWith(k)));
   add("/cheaper-revenuecat-alternatives", page(`${chrome("Cheaper than RevenueCat · 2026", "Cheaper RevenueCat alternatives, priced")}<div class="vis" data-og-safe><div><p class="cap">Monthly bill at ${esc(row[0])} tracked revenue</p><div class="cols">${idx.map(([h, i]) => `<div class="${/RevenueDot/.test(h) ? "rd" : ""}"><span>${esc(h.replace(/\s*\(.*\)/, ""))}</span><b>${esc(row[i])}</b></div>`).join("")}</div></div></div>`));
 }

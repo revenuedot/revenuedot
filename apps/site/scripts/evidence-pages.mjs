@@ -261,6 +261,5 @@ export const PAGES = [
   p("nami", "pricing", "https://www.nami.ml/pricing", { crops: [c("enterprise-only", "Annual, shaped to your volume and surfaces", "Nami ML pricing page: 'Enterprise pricing', a single Custom plan priced annually by volume and surfaces, with Book a demo and Talk to sales.", "Enterprise only, custom annual contracts, no list price", { verify: "Custom", minH: 620, maxH: 1100, extraTop: 320 })] }),
 
   // ---- RevenueDot (our own pages cited on the alternatives list) --------------------------------------------------
-  p("revenuedot", "pricing", "https://revenuedot.app/pricing", { crops: [c("plans", "capped at $999 a month", "RevenueDot pricing plan cards: Cloud Free $0 up to $10K monthly tracked revenue, Cloud Standard 0.5% of tracked revenue above $10K capped at $999 a month, Enterprise from $50K a year, Self-host $0 under AGPL-3.0.", "Cloud free to $10K; Standard 0.5% capped at $999; self-host free", { verify: "0.5%", minH: 620, maxH: 1000, minW: 1280, extraTop: 60 })] }),
   p("revenuedot", "github-revenuedot", "https://github.com/revenuedot/revenuedot", { crops: [c("license", "AGPL-3.0 license", "GitHub repository page of revenuedot/revenuedot with the AGPL-3.0 license shown next to the README tab.", "Server and dashboard under AGPL-3.0", { selector: "a:has-text('AGPL-3.0 license')", minH: 480, extraTop: 120 })] }),
 ];

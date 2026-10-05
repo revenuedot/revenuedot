@@ -1012,10 +1012,10 @@ export const GLOSSARY: Term[] = [
     body: [
       "RevenueCat's documentation says MTR is different from MRR and includes the revenue from all purchases and renewals, including non-subscription products. It is measured before store commission and taxes, so it reflects what the customer paid and not your net proceeds. As of October 2026, RevenueCat's pricing page says you pay nothing up to $2,500 in MTR and then 1% of MTR. Its account management documentation gives the example of $2,600 in MTR in the previous billing cycle, which means a $26 charge, and says that RevenueCat is free again if you fall below the limit in later months.",
       "That means the fee applies to all tracked revenue once you pass the limit, not only to the part above it. A one-time $49.99 lifetime purchase counts toward MTR, so an app that sells both subscriptions and one-time products has an MTR higher than its MRR.",
-      "RevenueDot Cloud uses the same unit: gross store purchases processed in a calendar month, before store fees and taxes, with sandbox and test purchases never counted. It is free up to $10,000 of monthly tracked revenue. Cloud Standard is 0.5% above $10,000, capped at $999 a month. The server is open source under the AGPL-3.0 license.",
+      "RevenueDot Cloud uses the same unit: production purchases and renewals in a calendar month, before store fees and taxes. Sandbox purchases, Test Store purchases, trials and refunds do not count. Its Pro plan is free until your apps make $10,000 a month, then charges 0.5% of revenue above $10,000, never more than $999 a month. The server is open source under the AGPL-3.0 license.",
     ],
     example:
-      "An app with $2,600 of MTR pays RevenueCat $26, because the 1% applies to all $2,600. At $2,400 it pays nothing. On RevenueDot Cloud both months are free, because the free limit is $10,000.",
+      "An app with $2,600 of MTR pays RevenueCat $26, because the 1% applies to all $2,600. At $2,400 it pays nothing. On RevenueDot Cloud both months are free, because Pro costs $0 until your apps make $10,000 a month.",
     faq: [
       { q: "Is MTR the same as MRR?", a: "No. MTR counts all purchases and renewals, including one-time purchases, before store fees and taxes. MRR counts only the monthly value of active subscriptions." },
       { q: "How much does RevenueCat charge for MTR?", a: "As of October 2026, nothing up to $2,500 of MTR, then 1% of MTR on its Pro plan, according to its pricing page." },

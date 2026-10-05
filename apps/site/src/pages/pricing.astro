@@ -3,95 +3,176 @@ import Base from "../layouts/Base.astro";
 import PageHead from "../components/PageHead.astro";
 import Faq from "../components/Faq.astro";
 import CtaBand from "../components/CtaBand.astro";
-import { PLANS, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE, RC_FREE_UP_TO, RC_RATE, cloudBill, revenueCatBill, usd } from "../lib/pricing";
+import {
+  PLANS, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE, RC_FREE_UP_TO, RC_RATE, GRACE_DAYS, CARD_RULE, PRICE_LINE, SIGNUP_CTA,
+  cloudBill, revenueCatBill, usd,
+} from "../lib/pricing";
 import { softwareApplication } from "../lib/jsonld";
-import { FAQ_COST, FAQ_PRICE_ALT, FAQ_DATA, FAQ_LICENSE } from "../lib/faq";
-import Visual from "../components/Visual.astro";
+import { FAQ_COST, FAQ_PRICE_ALT } from "../lib/faq";
 import Clip from "../components/Clip.astro";
 import TourPlayer from "../components/TourPlayer.astro";
 import Evidence from "../components/Evidence.astro";
 import { SITE } from "../site";
 
+const pro = PLANS.find((p) => p.id === "pro")!;
+const ent = PLANS.find((p) => p.id === "enterprise")!;
+
 const faq = [
   FAQ_COST,
-  { q: "What counts as tracked revenue?", a: "Tracked revenue is the gross value of the App Store, Google Play and other store purchases RevenueDot Cloud processes for your apps in a calendar month, before store fees and taxes. Sandbox and test purchases never count." },
-  { q: "Do I pay anything while I build and test my app?", a: "No. Sandbox and Test Store purchases never count as tracked revenue, and RevenueDot Cloud is free until your app makes $10,000 a month from real customers. Building and testing are free, no card needed." },
-  { q: "Can I export my data?", a: "Yes. You can export everything a project owns at any time, with the same ids, SDK keys and webhook secrets, so you are never locked in. Your apps change only the proxy URL." },
-  { q: "Which plan includes single sign-on?", a: "Cloud Standard and Enterprise. Cloud Standard adds single sign-on with SAML 2.0 or OpenID Connect, so your team signs in with Google Workspace, Okta or Microsoft Entra ID, and you can require it for your email domain. It also adds organizations and custom roles. Upgrade any time from Billing in the dashboard; below $10,000 a month of tracked revenue it still costs $0." },
-  { q: "What does Enterprise add?", a: "Enterprise has everything in Cloud Standard with no revenue limit. It adds SCIM provisioning, audit logs kept from 30 days to 10 years, signed compliance exports of the audit log and access review, and a commercial license if your company must run its own server. It includes a 99.9% monthly uptime SLA on the purchase path with service credits (10% below 99.9%, 25% below 99.5%, 50% below 99%). Support answers within 1 hour at any hour when purchases fail, within 4 business hours for a broken feature and within 1 business day for questions, in a private Slack channel with a named engineer. If you are moving from RevenueCat, we run the migration with you. We also sign a DPA and answer security reviews. Pricing is custom, from $50,000 a year." },
-  FAQ_DATA,
-  FAQ_LICENSE,
+  { q: "Do I need a card to use RevenueDot?", a: `${CARD_RULE} You add the card in Stripe Checkout when your app makes its first live sale, and it is charged $0 that day.` },
+  { q: "What counts as tracked revenue?", a: "Tracked revenue is the money your apps' production purchases and renewals earn in a calendar month, before store fees and taxes. Sandbox and Test Store purchases, free trials and refunds do not count. Purchase history imported from RevenueCat or copied in when you move a project does not count either." },
+  { q: "What happens at my first live sale?", a: `Your first live sale is the first production purchase that earns money in any of your apps. We email you, and the dashboard shows a banner with a date ${GRACE_DAYS} days later. Start Pro on the Billing page before that date. Checkout asks for a card and charges $0 today.` },
+  { q: "What if I don't add a card?", a: `Your app keeps working. Purchases are always verified and every purchase unlocks what the customer paid for. ${GRACE_DAYS} days after your first live sale, live charts, customer data, exports and webhooks pause until you start Pro. Webhooks are held, not dropped, and go out when Pro starts. Sandbox data keeps working the whole time.` },
+  { q: "What if my card fails?", a: "Pro stays on while Stripe retries the charge, so nothing changes for you or your customers. Update the card on the Billing page. If every retry fails, the account has no plan again: live data and webhooks pause until you start Pro, and your app keeps working and every purchase still unlocks." },
+  { q: "Is there a free trial?", a: `There is no trial because you do not need one. Pro costs $0 until your apps make ${usd(CLOUD_FREE_UP_TO)} a month, so building, testing and the first ${usd(CLOUD_FREE_UP_TO)} of revenue every month cost nothing. Every feature is included from the first day.` },
+  { q: "Can I export my data?", a: "Yes. You can export everything a project owns at any time, with the same ids, SDK keys and webhook secrets, so you are never locked in. Exports when you move a project are never paused." },
+  { q: "Can I run RevenueDot on my own servers?", a: "Yes. The server is open source under AGPL-3.0, and the self-host guide shows how to run it with Docker and Postgres. Enterprise features on your own servers, such as organizations, single sign-on and SCIM, need an Enterprise license." },
+  { q: "What does Enterprise add?", a: "Enterprise has everything in Pro with no revenue limit and volume pricing. It adds SCIM provisioning, audit logs kept from 30 days to 10 years, signed compliance exports of the audit log and access review, and a commercial license to run RevenueDot on your own servers. It includes a 99.9% monthly uptime SLA on the purchase path with service credits (10% below 99.9%, 25% below 99.5%, 50% below 99%). Support answers within 1 hour at any hour when purchases fail, in a private Slack channel with a named engineer. We also sign your DPA and answer your security review. Pricing is custom, from $50,000 a year." },
   FAQ_PRICE_ALT,
 ];
+
+const steps = [
+  { n: "01", t: "Build and test for free", d: "Create apps, connect the stores, build paywalls and buy in sandbox and the Test Store. Nothing before launch costs money." },
+  { n: "02", t: "Add a card when you go live", d: `After your app's first live sale, you have ${GRACE_DAYS} days to start Pro. Checkout charges $0 that day.` },
+  { n: "03", t: `$0 until ${usd(CLOUD_FREE_UP_TO)} a month`, d: `Pro costs nothing in any month your apps make less than ${usd(CLOUD_FREE_UP_TO)}.` },
+  { n: "04", t: `Then 0.5%, capped at ${usd(CLOUD_CAP)}`, d: `Above ${usd(CLOUD_FREE_UP_TO)} a month you pay 0.5% of the revenue above it. The bill never passes ${usd(CLOUD_CAP)} a month, and the rate never rises.` },
+];
+
 const examples = [5_000, 25_000, 50_000, 100_000, 250_000, 500_000];
-const ENT_LICENSE = "With an Enterprise license";
-const planCols = ["Cloud Free", "Cloud Standard", "Enterprise", "Own server (advanced)"];
-const planRows: [string, string, string, string, string][] = [
-  ["Price", "$0", `0.5% of tracked revenue above ${usd(CLOUD_FREE_UP_TO)} a month, never more than ${usd(CLOUD_CAP)} a month`, "Custom, from $50,000 a year", "Free"],
-  ["Tracked revenue", "Up to $10,000 a month", "Up to $1M a month", "No limit", "No limit"],
-  ["Open-source core features", "Yes", "Yes", "Yes", "Yes"],
-  ["Apps, projects and teammates", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles"],
-  ["Audit log", "Kept 90 days", "Kept 90 days", "Kept 30 days to 10 years, your choice", "Kept in your own database"],
-  ["Organizations and custom roles", "No", "Yes", "Yes", ENT_LICENSE],
-  ["Single sign-on (SAML, OpenID Connect)", "No", "Yes, and you can require it for your email domain", "Yes, and you can require it for your email domain", ENT_LICENSE],
-  ["SCIM provisioning", "No", "No", "Yes", ENT_LICENSE],
-  ["Compliance exports", "No", "No", "Signed exports of the audit log and access review", ENT_LICENSE],
-  ["Where your data lives", "US", "US", "US, or your own cloud with the commercial license", "Your own servers"],
-  ["License", "Not needed: we run it", "Not needed: we run it", "Commercial license to self-host without AGPL duties, with every enterprise feature", "AGPL-3.0"],
-  ["Uptime SLA", "No", "No", "99.9% a month on the purchase path, with service credits", "No"],
-  ["Support", "Community and email", "Email, first reply within 2 business days", "1 hour when purchases fail, at any hour; private Slack channel and a named engineer", "GitHub community"],
+const planCols = ["Pro", "Enterprise"];
+const planRows: [string, string, string][] = [
+  ["Price", PRICE_LINE, "Custom, from $50,000 a year"],
+  ["Revenue covered", "Apps up to $1M a month", "No limit, with volume pricing"],
+  ["Card", "Added when you go live, $0 due that day", "Invoiced by contract"],
+  ["Paywalls, experiments and charts", "Yes", "Yes"],
+  ["Integrations and webhooks", "Yes", "Yes"],
+  ["Apps, projects and teammates", "Unlimited, with Admin, Developer and Viewer roles", "Unlimited, with Admin, Developer and Viewer roles"],
+  ["Organizations and custom roles", "Yes", "Yes"],
+  ["Single sign-on (SAML, OpenID Connect)", "Yes, and you can require it for your email domain", "Yes, and you can require it for your email domain"],
+  ["SCIM provisioning", "No", "Yes"],
+  ["Audit log", "Kept 90 days", "Kept 30 days to 10 years, your choice"],
+  ["Compliance exports", "No", "Signed exports of the audit log and access review"],
+  ["Where your data lives", "US", "US, or your own cloud"],
+  ["Commercial license for your own servers", "No", "Yes, with every enterprise feature"],
+  ["Uptime SLA", "No", "99.9% a month on the purchase path, with service credits"],
+  ["Security review and DPA", "Data processing summary; full DPA on request", "We sign your DPA and answer your security review"],
+  ["Support", "Email, first reply within 2 business days", "1 hour when purchases fail, at any hour; private Slack channel and a named engineer"],
 ];
 const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : undefined);
 ---
 <Base
   title="Pricing"
-  fullTitle="Pricing: RevenueDot Cloud free up to $10K a month"
-  description="RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, and never more than $999 a month. Start free and run nothing yourself."
+  fullTitle="Pricing: start for free, 0.5% after $10K a month | RevenueDot"
+  description="RevenueDot Pro costs $0 until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month. Enterprise has custom pricing."
   path="/pricing"
   crumbs={[{ name: "Pricing", path: "/pricing" }]}
   faq={faq}
   jsonld={[softwareApplication()]}
 >
   <div class="wrap">
-    <PageHead label="Pricing" title="Free on Cloud up to $10K a month." lede={`RevenueDot Cloud is free while your app tracks up to ${usd(CLOUD_FREE_UP_TO)} a month, and paid plans are capped at ${usd(CLOUD_CAP)} a month.`}>
-      <div class="btns"><a class="btn" href={SITE.signup}>Start free on Cloud</a></div>
+    <PageHead label="Pricing" title="Start for free" lede={`RevenueDot Pro costs $0 until your apps make ${usd(CLOUD_FREE_UP_TO)} a month, then 0.5% of revenue above that, and never more than ${usd(CLOUD_CAP)} a month.`}>
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>{SIGNUP_CTA}</a>
+        <a class="btn secondary" href="/contact-sales">Contact sales</a>
+      </div>
     </PageHead>
   </div>
 
   <section class="section first plans-section" aria-label="Plans" data-fast-scroll="viewed_pricing_plans">
-    <div class="wrap">
-      <div class="grid"><div class="gi cols-3 plans">
-        {PLANS.map((p) => (
-          <div class="cell plan">
-            <div class="plan-top">
-              <h2 class="h3">{p.name}</h2>
-              {p.available ? <span class="tag">Available</span> : <span class="tag gold">Coming</span>}
-            </div>
-            <p class="price">{p.price}</p>
-            <p class="tiny">{p.priceNote}</p>
-            <p class="summary">{p.summary}</p>
-            <ul>{p.features.map((f) => <li>{f}</li>)}</ul>
-            <a class={`btn ${p.id === "cloud-free" ? "" : "secondary"}`} href={p.cta.href} rel={p.cta.href.startsWith("http") ? "noopener" : undefined}>{p.cta.label}</a>
+    <div class="wrap plans">
+      <div class="grid plan-card"><div class="gi cols-2">
+        <div class="cell plan-main">
+          <p class="label">{pro.name}</p>
+          <h2 class="plan-title">{pro.headline}</h2>
+          <p class="plan-price"><span class="big">$0</span> <span class="unit">until your apps make {usd(CLOUD_FREE_UP_TO)} a month</span></p>
+          <p class="plan-copy">Then <strong>0.5% of revenue above {usd(CLOUD_FREE_UP_TO)}</strong>, and never more than <strong>{usd(CLOUD_CAP)} a month</strong>. The rate never rises. For apps up to $1M a month.</p>
+          <div class="plan-cta">
+            <a class="btn" href={pro.cta.href} rel="noopener">{pro.cta.label}</a>
+            <p class="tiny">{CARD_RULE}</p>
           </div>
-        ))}
+        </div>
+        <div class="cell plan-side">
+          <p class="label">Everything's included</p>
+          <p class="side-lede">Every feature of RevenueDot is in Pro. You never upgrade to unlock one.</p>
+          <ul class="checks">{pro.features.map((f) => <li>{f}</li>)}</ul>
+        </div>
       </div></div>
-      <p class="tiny note">Outcome add-ons (failed-payment recovery, win-backs, refund defense) will be priced as a share of the money they recover.</p>
-      <div class="billing-shot">
-        <p class="label">What the Billing page shows</p>
-        <p class="small muted">Tracked revenue by project, the bill so far and the cap, on the real Billing page of a Cloud Standard account.</p>
-        <Visual name="cloud-billing" />
-      </div>
+
+      <div class="grid plan-card"><div class="gi cols-2">
+        <div class="cell plan-main">
+          <p class="label">{ent.name}</p>
+          <h2 class="plan-title">{ent.headline}</h2>
+          <p class="plan-price"><span class="unit">From</span> <span class="big sm">$50,000</span> <span class="unit">a year</span></p>
+          <p class="plan-copy">{ent.summary}</p>
+          <div class="plan-cta"><a class="btn secondary" href={ent.cta.href}>{ent.cta.label} <span class="arrow">→</span></a></div>
+        </div>
+        <div class="cell plan-side">
+          <p class="label">Everything in Pro, plus</p>
+          <ul class="checks">{ent.features.map((f) => <li>{f}</li>)}</ul>
+        </div>
+      </div></div>
     </div>
   </section>
 
-  <section class="section" id="film">
+  <section class="section" id="how-billing-works" data-fast-scroll="viewed_pricing_billing">
     <div class="wrap">
       <div class="head">
-        <p class="label">The price in 43 seconds</p>
-        <h2 class="h2">Your bill stops at {usd(CLOUD_CAP)} a month</h2>
-        <p class="lede">The teaser shows the dashboard an app runs from, a switch from RevenueCat in one line, and the price curve from free to {usd(CLOUD_CAP)} a month.</p>
+        <p class="label">How billing works</p>
+        <h2 class="h2">You add a card when you go live</h2>
+        <p class="lede">{CARD_RULE}</p>
       </div>
-      <div class="film"><TourPlayer name="revenuedot-platform-teaser" seconds={43} label="Watch the teaser" location="pricing" /></div>
+      <div class="grid"><div class="gi cols-4">
+        {steps.map((s) => (
+          <div class="cell step">
+            <p class="num">{s.n}</p>
+            <h3 class="h3">{s.t}</h3>
+            <p>{s.d}</p>
+          </div>
+        ))}
+      </div></div>
+      <p class="small keeps">Your app keeps working in every case. Purchases are always verified and every purchase unlocks. Without Pro, {GRACE_DAYS} days after your first live sale, live charts, customer data, exports and webhooks pause until you start it. Tracked revenue counts production purchases and renewals only: sandbox, Test Store, trials and refunds never count.</p>
+    </div>
+  </section>
+
+  <section class="section" id="calculator" data-fast-scroll="viewed_pricing_calculator">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Your bill</p>
+        <h2 class="h2">Your bill stops at {usd(CLOUD_CAP)} a month</h2>
+        <p class="lede">Pro charges {CLOUD_RATE * 100}% of the revenue above {usd(CLOUD_FREE_UP_TO)} a month, capped at {usd(CLOUD_CAP)}. For comparison, RevenueCat charges {Math.round(RC_RATE * 100)}% of all tracked revenue once it reaches {usd(RC_FREE_UP_TO)} a month.</p>
+      </div>
+      <div class="grid calc"><div class="gi cols-3">
+        <div class="cell span">
+          <label for="mtr" class="label">Monthly tracked revenue</label>
+          <output id="mtr-out" for="mtr" class="stat">$50,000</output>
+          <input id="mtr" type="range" min="0" max="1000000" step="5000" value="50000" aria-describedby="mtr-help" />
+          <p id="mtr-help" class="tiny">Drag to set your apps' monthly revenue from the stores, before fees.</p>
+        </div>
+        <div class="cell"><p class="label">RevenueDot Pro</p><p class="stat" id="cloud">{usd(cloudBill(50_000))}</p><p>a month</p></div>
+        <div class="cell"><p class="label">RevenueCat, for comparison</p><p class="stat" id="rc">{usd(revenueCatBill(50_000))}</p><p>a month, from its public pricing</p></div>
+        <div class="cell"><p class="label">You keep</p><p class="stat" id="save">{usd(revenueCatBill(50_000) - cloudBill(50_000))}</p><p>a month with RevenueDot</p></div>
+      </div></div>
+      <div class="table-wrap examples">
+        <table>
+          <caption class="sr-only">Monthly price at common revenue levels</caption>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Pro</th><th scope="col">RevenueCat</th><th scope="col">You keep with RevenueDot</th></tr></thead>
+          <tbody>
+            {examples.map((m) => (
+              <tr>
+                <th scope="row" class="num-cell">{usd(m)}</th>
+                <td class="num-cell">{usd(cloudBill(m))}</td>
+                <td class="num-cell">{usd(revenueCatBill(m))}</td>
+                <td class="num-cell">{usd(revenueCatBill(m) - cloudBill(m))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny caption">RevenueCat price from <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>, checked {SITE.pricesChecked}; RevenueCat's paywall and funnel tools are priced separately. Adapty, Qonversion, Superwall and Apphud at the same levels: <a href="/cheaper-revenuecat-alternatives">cheaper RevenueCat alternatives</a>.</p>
+      <div class="rc-ev">
+        <p class="label">RevenueCat's pricing page, as captured</p>
+        <Evidence keys={["RevenueCat/pricing/free-to-2500-then-1-percent", "RevenueCat/community-pro-plan-payments/staff-reply-1-percent-of-whole-mtr"]} layout="grid" width={340} />
+      </div>
     </div>
   </section>
 
@@ -99,8 +180,8 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
     <div class="wrap">
       <div class="head">
         <p class="label">Compare plans</p>
-        <h2 class="h2">Single sign-on comes with Cloud Standard</h2>
-        <p class="lede">Every plan runs the same open-source core, and the plans differ in revenue covered, team sign-in, compliance and support.</p>
+        <h2 class="h2">Pro includes every product feature</h2>
+        <p class="lede">Enterprise adds volume pricing, compliance controls, an uptime SLA and faster help.</p>
       </div>
       <div class="table-wrap plan-table">
         <table>
@@ -123,8 +204,8 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
     <div class="wrap">
       <div class="head">
         <p class="label">Team controls</p>
-        <h2 class="h2">Roles, single sign-on and audit logs on screen</h2>
-        <p class="lede">These are the team controls from the plan table, recorded in the dashboard with example data. The plan table says which plan includes each one.</p>
+        <h2 class="h2">Single sign-on comes with Pro</h2>
+        <p class="lede">Pro includes custom roles and single sign-on at the same capped price. Signed compliance exports come with Enterprise. These clips are the real dashboard with example data.</p>
       </div>
       <div class="controls">
         <Clip name="revenuedot-loop-roles-v1" sizes="(max-width: 900px) 100vw, 380px" alt="The organization's Roles page: opening New custom role, typing a name and ticking the scopes it allows" caption="Custom roles: pick exactly which scopes a role has." />
@@ -134,44 +215,14 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
     </div>
   </section>
 
-  <section class="section" id="calculator" data-fast-scroll="viewed_pricing_calculator">
+  <section class="section" id="film">
     <div class="wrap">
       <div class="head">
-        <p class="label">Your bill</p>
-        <h2 class="h2">You pay nothing until {usd(CLOUD_FREE_UP_TO)} a month, and never more than {usd(CLOUD_CAP)}</h2>
-        <p class="lede">RevenueDot Cloud charges {CLOUD_RATE * 100}% of the revenue above {usd(CLOUD_FREE_UP_TO)} a month, capped at {usd(CLOUD_CAP)}. For comparison, RevenueCat charges {Math.round(RC_RATE * 100)}% of all tracked revenue once it reaches {usd(RC_FREE_UP_TO)} a month.</p>
+        <p class="label">The price in 43 seconds</p>
+        <h2 class="h2">See the dashboard and the price</h2>
+        <p class="lede">The teaser shows the dashboard an app runs from, a switch from RevenueCat in one line, and the price curve from free to {usd(CLOUD_CAP)} a month.</p>
       </div>
-      <div class="grid calc"><div class="gi cols-3">
-        <div class="cell span">
-          <label for="mtr" class="label">Monthly tracked revenue</label>
-          <output id="mtr-out" for="mtr" class="stat">$50,000</output>
-          <input id="mtr" type="range" min="0" max="1000000" step="5000" value="50000" aria-describedby="mtr-help" />
-          <p id="mtr-help" class="tiny">Drag to set your app's monthly revenue from the stores, before fees.</p>
-        </div>
-        <div class="cell"><p class="label">RevenueDot Cloud</p><p class="stat" id="cloud">{usd(cloudBill(50_000))}</p><p>a month (Cloud Standard)</p></div>
-        <div class="cell"><p class="label">RevenueCat, for comparison</p><p class="stat" id="rc">{usd(revenueCatBill(50_000))}</p><p>a month, from its public pricing</p></div>
-      </div></div>
-      <div class="table-wrap examples">
-        <table>
-          <caption class="sr-only">Monthly price at common revenue levels</caption>
-          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueCat</th><th scope="col">Cloud saves you vs RevenueCat</th></tr></thead>
-          <tbody>
-            {examples.map((m) => (
-              <tr>
-                <th scope="row" class="num-cell">{usd(m)}</th>
-                <td class="num-cell">{usd(cloudBill(m))}</td>
-                <td class="num-cell">{usd(revenueCatBill(m))}</td>
-                <td class="num-cell">{usd(revenueCatBill(m) - cloudBill(m))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p class="tiny caption">RevenueCat price from <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>, checked {SITE.pricesChecked}; RevenueCat's paywall and funnel tools are priced separately. Adapty, Qonversion, Superwall and Apphud at the same levels: <a href="/cheaper-revenuecat-alternatives">cheaper RevenueCat alternatives</a>.</p>
-      <div class="rc-ev">
-        <p class="label">RevenueCat's pricing page, as captured</p>
-        <Evidence keys={["RevenueCat/pricing/free-to-2500-then-1-percent", "RevenueCat/community-pro-plan-payments/staff-reply-1-percent-of-whole-mtr", "RevenueDot/pricing/plans"]} layout="grid" width={340} />
-      </div>
+      <div class="film"><TourPlayer name="revenuedot-platform-teaser" seconds={43} label="Watch the teaser" location="pricing" /></div>
     </div>
   </section>
 
@@ -190,40 +241,55 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
   const input = document.getElementById("mtr");
   const update = () => {
     const m = Number(input.value);
+    const rc = m >= RC_FREE_UP_TO ? m * RC_RATE : 0;
+    const rd = Math.min(CLOUD_CAP, Math.max(0, m - CLOUD_FREE_UP_TO) * CLOUD_RATE);
     document.getElementById("mtr-out").textContent = f(m);
-    document.getElementById("rc").textContent = f(m >= RC_FREE_UP_TO ? m * RC_RATE : 0);
-    document.getElementById("cloud").textContent = f(Math.min(CLOUD_CAP, Math.max(0, m - CLOUD_FREE_UP_TO) * CLOUD_RATE));
+    document.getElementById("rc").textContent = f(rc);
+    document.getElementById("cloud").textContent = f(rd);
+    document.getElementById("save").textContent = f(rc - rd);
   };
   input.addEventListener("input", update);
 </script>
 
 <style>
   .plans-section { padding-top: 0; }
-  .plan { display: flex; flex-direction: column; gap: 12px; }
-  .plan-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .plan .price { color: var(--fg); font: 600 44px/1 var(--font); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; margin-top: 8px; }
-  .summary { min-height: 96px; }
-  .plan ul { list-style: none; margin: 4px 0 12px; padding: 0; display: grid; gap: 8px; font-size: 14px; color: var(--fg-2); }
-  .plan li { padding-left: 16px; position: relative; }
-  .plan li::before { content: ""; position: absolute; left: 0; top: .65em; width: 6px; height: 6px; background: var(--fg); }
-  .plan .btn { justify-content: center; margin-top: auto; }
-  .note { margin-top: 20px; max-width: 820px; }
+  .plans { display: grid; gap: 32px; }
+  .plan-card .gi { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
+  .plan-main { gap: 14px; padding: 36px; }
+  .plan-side { gap: 14px; padding: 36px; background: var(--sidebar); }
+  .plan-title { font: 600 clamp(32px, 4vw, 44px)/1.05 var(--font); letter-spacing: var(--tracking-title); color: var(--fg); }
+  .plan-price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin-top: 4px; }
+  .plan-price .big { font: 600 44px/1 var(--font); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; color: var(--fg); }
+  .plan-price .big.sm { font-size: 34px; }
+  .plan-price .unit { font-size: 15px; color: var(--fg-2); }
+  .cell .plan-copy { font-size: 16px; color: var(--fg-2); max-width: 46ch; }
+  .plan-copy strong { color: var(--fg); font-weight: 600; }
+  .plan-cta { display: grid; gap: 12px; margin-top: 8px; justify-items: start; }
+  .plan-cta .tiny { max-width: 44ch; }
+  .side-lede { margin-bottom: 4px; }
+  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 14px; color: var(--fg); }
+  .checks li { padding-left: 24px; position: relative; line-height: 1.45; }
+  .checks li::before { content: ""; position: absolute; left: 2px; top: .35em; width: 10px; height: 5px; border-left: 1.5px solid var(--up); border-bottom: 1.5px solid var(--up); transform: rotate(-45deg); }
+  .step { gap: 8px; }
+  .step .num { color: var(--accent-ink); }
+  .keeps { margin-top: 20px; max-width: 820px; color: var(--fg-2); }
   .film { max-width: 1040px; }
   .controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
   @media (max-width: 900px) { .controls { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
-  .billing-shot { margin-top: 48px; display: grid; gap: 8px; }
-  .billing-shot .small { margin-bottom: 8px; }
   .rc-ev { margin-top: 32px; display: grid; gap: 16px; }
   .calc .span { grid-column: 1 / -1; }
   .calc input[type="range"] { width: 100%; accent-color: var(--fg); height: 32px; margin: 4px 0; }
   .examples { margin-top: 32px; }
-  .plan-table table { min-width: 860px; }
-  .plan-table td { color: var(--fg-2); min-width: 150px; }
+  .plan-table table { min-width: 640px; }
+  .plan-table td { color: var(--fg-2); min-width: 200px; }
   .plan-table td.yes { color: var(--up); }
   .plan-table td.no { color: var(--fg-3); }
   .plan-table tbody th { min-width: 160px; position: sticky; left: 0; background: var(--panel); z-index: 1; box-shadow: inset -1px 0 0 var(--border-2); }
   .plan-table thead th:first-child { position: sticky; left: 0; z-index: 2; box-shadow: inset -1px 0 0 var(--border); }
-  @media (max-width: 640px) { .plan-table table { min-width: 720px; } .plan-table td { min-width: 130px; } .plan-table tbody th { min-width: 120px; } }
-  @media (max-width: 1100px) { .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary { min-height: 0; } }
-  @media (max-width: 640px) { .plans { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) { .plan-card .gi { grid-template-columns: minmax(0, 1fr); } .calc .gi { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 640px) {
+    .plan-main, .plan-side { padding: 24px 20px; }
+    .plan-price .big { font-size: 38px; }
+    .plan-table table { min-width: 520px; } .plan-table td { min-width: 150px; } .plan-table tbody th { min-width: 120px; }
+  }
 </style>

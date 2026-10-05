@@ -174,9 +174,10 @@ describe("agent docs search", () => {
     expect(out.facts).toBeUndefined();
     const priced = await (await call(env, "/api/agent/docs?q=how%20much%20does%20enterprise%20cost")).json();
     expect(priced.facts).toBe(FACTS);
-    expect(FACTS).toContain("Cloud Free: $0, up to $10K monthly tracked revenue.");
-    expect(FACTS).toContain("of tracked revenue above $10K, capped at $999 a month");
-    expect(FACTS).toContain("Enterprise: $50K, a year to start, custom pricing.");
+    expect(FACTS).toContain("Pro: $0, until your apps make $10,000 a month, then 0.5% of revenue above $10,000, never more than $999 a month.");
+    expect(FACTS).toContain("Enterprise: $50K, a year to start, custom pricing and usage.");
+    expect(FACTS).toContain("Add a card when you go live; Pro costs $0 until your apps make $10,000 a month.");
+    expect(FACTS).not.toMatch(/Cloud Free|Cloud Standard|free plan/);
     expect((await call(env, "/api/agent/docs")).status).toBe(400);
   });
 });

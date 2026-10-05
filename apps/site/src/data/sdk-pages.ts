@@ -36,7 +36,7 @@ export const SDK_PAGES: Landing[] = [
         steps: [
           {
             name: "Create a free Cloud project and an App Store app",
-            text: `[Start free on Cloud](${SIGNUP}) and add an **App Store** app with your bundle ID. Copy its \`appl_\` public key.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add an **App Store** app with your bundle ID. Copy its \`appl_\` public key.`,
           },
           {
             name: "Connect Apple",
@@ -204,7 +204,7 @@ _ = try? await Purchases.shared.syncPurchases()`,
         steps: [
           {
             name: "Create a free Cloud project and a Google Play app",
-            text: `[Start free on Cloud](${SIGNUP}) and add a **Google Play** app with your package name. Copy its \`goog_\` public key.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add a **Google Play** app with your package name. Copy its \`goog_\` public key.`,
           },
           {
             name: "Connect Google Play",
@@ -375,7 +375,7 @@ Purchases.sharedInstance.syncPurchases()`,
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}). Add a **Test Store** app and copy its \`test_\` key. Add an App Store app and a Google Play app when you are ready to sell.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}). Add a **Test Store** app and copy its \`test_\` key. Add an App Store app and a Google Play app when you are ready to sell.`,
           },
           {
             name: "Connect the stores",
@@ -542,7 +542,7 @@ await Purchases.syncPurchasesForResult();`,
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}) and add a **Test Store** app for a first test. Add an App Store app and a Google Play app when you are ready to sell.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add a **Test Store** app for a first test. Add an App Store app and a Google Play app when you are ready to sell.`,
           },
           {
             name: "Connect the stores and create the catalog",
@@ -721,7 +721,7 @@ Future<void> initPurchases() async {
         steps: [
           {
             name: "Create a free Cloud project and a Test Store app",
-            text: `[Start free on Cloud](${SIGNUP}), add a **Test Store** app and copy its \`test_\` key.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}), add a **Test Store** app and copy its \`test_\` key.`,
           },
           {
             name: "Create products and an offering",
@@ -873,7 +873,7 @@ const purchases = Purchases.configure({
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
           },
           {
             name: "Connect the stores and create the catalog",
@@ -1027,7 +1027,7 @@ await Purchases.syncPurchases();`,
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
           },
           {
             name: "Connect the stores and create the catalog",
@@ -1179,7 +1179,7 @@ document.addEventListener("deviceready", () => {
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
           },
           {
             name: "Connect the stores and create the catalog",
@@ -1339,7 +1339,7 @@ GetComponent<Purchases>().SyncPurchases();`,
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add an App Store app and a Google Play app, or a **Test Store** app for a first run.`,
           },
           {
             name: "Connect the stores and create the catalog",

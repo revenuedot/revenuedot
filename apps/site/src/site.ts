@@ -6,7 +6,7 @@ export const SITE = {
   url: "https://revenuedot.app",
   tagline: "In-app purchases and subscriptions for every app",
   description:
-    "RevenueDot is an open-source backend for in-app purchases and subscriptions on the App Store, Google Play, Amazon, Stripe and the web. It checks every purchase, keeps each customer's access in sync and runs your paywalls and revenue charts. Start free on RevenueDot Cloud. Apps on RevenueCat switch by changing one line.",
+    "RevenueDot is an open-source backend for in-app purchases and subscriptions on the App Store, Google Play, Amazon, Stripe and the web. It checks every purchase, keeps each customer's access in sync and runs your paywalls and revenue charts. RevenueDot Cloud is free until your apps make $10,000 a month. Apps on RevenueCat switch by changing one line.",
   github: "https://github.com/revenuedot/revenuedot",
   org: "https://github.com/revenuedot",
   docs: "https://github.com/revenuedot/docs",
@@ -54,7 +54,7 @@ export const FOOTER = [
   {
     title: "Product",
     links: [
-      { href: "https://app.revenuedot.app/signup", label: "Start free on Cloud" },
+      { href: "https://app.revenuedot.app/signup", label: "Start for free" },
       { href: "https://app.revenuedot.app/login", label: "Sign in" },
       { href: "/features", label: "Features" },
       { href: "/features/paywalls", label: "Paywalls" },

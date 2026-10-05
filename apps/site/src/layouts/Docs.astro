@@ -8,7 +8,7 @@ import "../styles/docs.css";
 import { breadcrumbList } from "../lib/jsonld";
 import type { NavSection, NavItem } from "../lib/docs";
 import { SITE, type Crumb } from "../site";
-import { CLOUD_FREE_UP_TO, usd } from "../lib/pricing";
+import { CLOUD_FREE_UP_TO, SIGNUP_CTA, usd } from "../lib/pricing";
 
 type Heading = { depth: number; slug: string; text: string };
 interface Props {
@@ -104,8 +104,8 @@ const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en
         </nav>
       )}
       <aside class="dcloud" aria-label="RevenueDot Cloud" data-pagefind-ignore>
-        <p class="small"><strong>Run this on RevenueDot Cloud.</strong> <span class="muted">Free up to {usd(CLOUD_FREE_UP_TO)} a month in tracked revenue.</span></p>
-        <a class="btn sm" href={SITE.signup}>Start free</a>
+        <p class="small"><strong>Run this on RevenueDot Cloud.</strong> <span class="muted">Free until your apps make {usd(CLOUD_FREE_UP_TO)} a month.</span></p>
+        <a class="btn sm" href={SITE.signup}>{SIGNUP_CTA}</a>
       </aside>
       <slot name="after" />
     </div>

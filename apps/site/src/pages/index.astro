@@ -11,7 +11,7 @@ import TourPlayer from "../components/TourPlayer.astro";
 import CtaBand from "../components/CtaBand.astro";
 import { SDKS } from "../lib/sdks";
 import { softwareApplication } from "../lib/jsonld";
-import { cloudBill, revenueCatBill, usd, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE } from "../lib/pricing";
+import { cloudBill, revenueCatBill, usd, CARD_RULE, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE } from "../lib/pricing";
 import { FAQ_WHAT, FAQ_NO_RC_ACCOUNT, FAQ_COST, FAQ_STORES, FAQ_EXISTING, FAQ_NO_LOSS, FAQ_ALTERNATIVE, FAQ_READY, FAQ_AFFILIATED } from "../lib/faq";
 import { SITE } from "../site";
 import { playerUrl, VIDEOS } from "../lib/videos.mjs";
@@ -36,7 +36,7 @@ const paths = [
   { href: "/migrate-from-revenuecat", label: "On RevenueCat", title: "Switching from RevenueCat", text: "Keep the SDK your app already ships and change one line. Import your customers and run both side by side until the numbers match.", go: "See the switch" },
   { href: "/solutions/ai-built-apps", label: "Built with AI", title: "Building with Claude Code or Cursor", text: "Connect your coding tool to RevenueDot and paste one prompt. It creates the products and writes the purchase code for you.", go: "Use your AI tool" },
   { href: "/features", label: "Growing", title: "Growing revenue with paywalls and tests", text: `Change paywalls and prices without an app release, sell on the web with Stripe, and read ${CHART_PAGES.length} revenue charts.`, go: "See the features" },
-  { href: "/pricing#compare-plans", label: "Larger teams", title: "Teams that need SSO, audits and data control", text: "Single sign-on and custom roles come at the same capped price. Enterprise adds an uptime SLA, audit exports and your own server if your rules require it.", go: "Compare the plans" },
+  { href: "/pricing#compare-plans", label: "Larger teams", title: "Teams that need SSO, audits and data control", text: "Pro includes single sign-on and custom roles at the same capped price. Enterprise adds an uptime SLA, compliance exports and a license for your own cloud.", go: "Compare the plans" },
 ];
 const resources = [
   { href: "/in-app-purchases", label: "Guide", title: "How in-app purchases work", text: "Products, subscriptions, store fees and what needs a server, on iOS, Android and the web." },
@@ -56,7 +56,7 @@ const features = [
   { href: "/features/customer-center", title: "Customer Center", text: "Cancel and refund flows with retention offers, inside your app." },
   { href: "/stores", title: "Every store", text: "App Store, Google Play, Amazon Appstore and Stripe, plus a Test Store for building before launch." },
 ];
-const homeDescription = "Add in-app purchases and subscriptions to iOS, Android, Flutter, React Native and web apps. Open source, free to $10K a month. On RevenueCat? Change one line.";
+const homeDescription = "Add in-app purchases and subscriptions to iOS, Android, Flutter, React Native and web apps. Open source and free until $10K a month. On RevenueCat? Change one line.";
 ---
 <Base
   title="RevenueDot | Open-source in-app purchases and subscriptions"
@@ -85,7 +85,7 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
   <section class="section tight" aria-label="RevenueDot in numbers">
     <div class="wrap">
       <div class="grid"><div class="gi cols-4">
-        <div class="cell"><p class="label">Free until</p><p class="stat">$10K</p><p>a month in tracked revenue. Above that, Cloud never costs more than {usd(CLOUD_CAP)} a month.</p></div>
+        <div class="cell"><p class="label">Free until</p><p class="stat">$10K</p><p>a month in tracked revenue. Above that, Pro never costs more than {usd(CLOUD_CAP)} a month.</p></div>
         <div class="cell"><p class="label">Platforms</p><p class="stat">{SDKS.length}</p><p>iOS, Android, React Native, Flutter, the web and four more each have a RevenueDot SDK.</p></div>
         <div class="cell"><p class="label">Charts</p><p class="stat">{CHART_PAGES.length}</p><p>MRR, churn, trial conversion, LTV, cohorts and refunds, from your first purchase.</p></div>
         <div class="cell"><p class="label">Integrations</p><p class="stat">{partners.length}</p><p>Amplitude, Mixpanel, Meta, Slack and more get every purchase event.</p></div>
@@ -98,7 +98,7 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
       <div class="head">
         <p class="label">Where to start</p>
         <h2 class="h2">Start from where your app is today</h2>
-        <p class="lede">Pick the case closest to yours. Every path ends in the same free RevenueDot Cloud project.</p>
+        <p class="lede">Pick the case closest to yours. Every path starts with the same RevenueDot Cloud project, free until your app makes $10,000 a month.</p>
       </div>
       <div class="grid"><div class="gi cols-3">
         {paths.map((p) => (
@@ -240,11 +240,11 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
       <div class="head">
         <p class="label">What it costs</p>
         <h2 class="h2">Free until {usd(CLOUD_FREE_UP_TO)} a month, then never more than {usd(CLOUD_CAP)}</h2>
-        <p class="lede">Tracked revenue is your store revenue before Apple and Google take their cut. Above {usd(CLOUD_FREE_UP_TO)} a month, RevenueDot charges {CLOUD_RATE * 100}% of the revenue above it. RevenueCat's price, from its public pricing checked {SITE.pricesChecked}, is shown for comparison.</p>
+        <p class="lede">Tracked revenue is your store revenue before Apple and Google take their cut. Above {usd(CLOUD_FREE_UP_TO)} a month, RevenueDot Pro charges {CLOUD_RATE * 100}% of the revenue above it. RevenueCat's price, from its public pricing checked {SITE.pricesChecked}, is shown for comparison.</p>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Cloud</th><th scope="col">RevenueCat</th></tr></thead>
+          <thead><tr><th scope="col">Monthly tracked revenue</th><th scope="col">RevenueDot Pro</th><th scope="col">RevenueCat</th></tr></thead>
           <tbody>
             {tiers.map((t) => (
               <tr>
@@ -256,6 +256,7 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
           </tbody>
         </table>
       </div>
+      <p class="small muted card-rule">{CARD_RULE}</p>
       <p class="tiny caption">RevenueCat source: <a href="https://www.revenuecat.com/pricing" rel="noopener">revenuecat.com/pricing</a>. <a href="/pricing">See pricing</a> · <a href="/tools/revenuecat-fee-calculator">Compare your own bill</a>.</p>
     </div>
   </section>
@@ -286,6 +287,7 @@ const homeDescription = "Add in-app purchases and subscriptions to iOS, Android,
 </Base>
 
 <style>
+  .card-rule { margin-top: 16px; }
   .alt { margin-top: 14px; }
   .alt a { color: var(--fg); }
   .hero { padding: 72px 0 0; }

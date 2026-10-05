@@ -42,7 +42,7 @@ const IN_APP_PURCHASES: Guide = {
   answer:
     "An in-app purchase is a payment inside a mobile app for digital content or features, charged by the App Store or Google Play instead of your own payment processor. Both stores sell one-time purchases and auto-renewing subscriptions. The store keeps a commission, usually 15% or 30%, and a backend checks each purchase and decides what the customer can use.",
   secondary: { href: "/add-in-app-purchases", label: "Add them to your app" },
-  note: "RevenueDot is a free backend for in-app purchases, up to $10,000 a month in revenue.",
+  note: "RevenueDot Cloud is free until your app makes $10,000 a month in revenue.",
   points: [
     { title: "Four types", text: "Consumables, non-consumables, auto-renewable subscriptions and non-renewing subscriptions." },
     { title: "15% or 30% to the store", text: "Apple and Google keep a commission on each sale. Small developers and subscriptions after one year pay 15% on the App Store." },
@@ -121,7 +121,7 @@ const IN_APP_PURCHASES: Guide = {
       label: "RevenueDot",
       paras: [
         "RevenueDot is an open-source backend for in-app purchases and subscriptions. Your app installs the RevenueDot SDK for its platform and configures it with one key. RevenueDot validates App Store, Google Play, Amazon Appstore and Stripe purchases, keeps entitlements, receives store notifications and sends webhooks.",
-        "RevenueDot Cloud is free up to $10,000 a month in revenue, then 0.5%, never more than $999 a month. Start with [the step-by-step setup](/add-in-app-purchases), or read [whether an iOS-only app needs a backend at all](/do-i-need-revenuecat).",
+        "RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of the revenue above that, never more than $999 a month. Start with [the step-by-step setup](/add-in-app-purchases), or read [whether an iOS-only app needs a backend at all](/do-i-need-revenuecat).",
       ],
     },
   ],
@@ -167,14 +167,14 @@ const ADD_IAP: Guide = {
   title: "Add subscriptions to your app for free until it makes $10K a month",
   metaTitle: "How to Add In-App Purchases and Subscriptions to an App",
   metaDescription:
-    "Add in-app purchases and subscriptions to an iOS, Android, Flutter, React Native or web app with the RevenueDot SDK. Test before launch. Free up to $10K a month.",
+    "Add in-app purchases and subscriptions to an iOS, Android, Flutter, React Native or web app with the RevenueDot SDK. Test before launch. Free until it makes $10K a month.",
   answer:
     "RevenueDot is a backend for in-app purchases and subscriptions. You install the RevenueDot SDK for your platform, configure it with your app's key, and sell on the App Store and Google Play, and on the web with Stripe. RevenueDot checks every purchase with the store and keeps each customer's access in sync. RevenueDot Cloud is free until your app makes $10,000 a month.",
   secondary: { href: "/docs/getting-started/quickstart", label: "Read the 5-minute quickstart" },
-  note: "Building and testing are free, no card needed. Test purchases work before you have an App Store or Google Play account.",
+  note: "Building and testing are free, no card needed. Add a card when you go live; Pro costs $0 until your apps make $10,000 a month.",
   points: [
     { title: "One SDK per platform", text: "The RevenueDot SDK covers iOS, Android, React Native and Expo, Flutter, the web and four more platforms." },
-    { title: "Free until it earns", text: "RevenueDot Cloud costs nothing up to $10,000 a month in store revenue, counted before Apple and Google take their cut." },
+    { title: "Free until it earns", text: "RevenueDot Cloud costs nothing until your app makes $10,000 a month in store revenue, counted before Apple and Google take their cut." },
     { title: "Test without a store account", text: "The built-in Test Store makes purchases that unlock access and send events like real ones, so you can build the paywall first." },
     { title: "Your AI tool can set it up", text: "Connect Claude Code or Cursor to RevenueDot's MCP server and paste the prompt below. It creates the products and writes the code." },
   ],
@@ -236,7 +236,7 @@ Purchases.configure(withAPIKey: "test_...")`,
       h2: "What it costs",
       label: "Price",
       paras: [
-        "RevenueDot Cloud is free until your app makes $10,000 a month, counted before Apple and Google take their cut. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month. See [pricing](/pricing).",
+        "RevenueDot Cloud is free until your app makes $10,000 a month, counted before Apple and Google take their cut. Above that, Pro charges 0.5% of the revenue above $10,000, capped at $999 a month. See [pricing](/pricing).",
         "The stores keep their own commission, usually 15%. See [what Apple and Google charge](/in-app-purchases#what-apple-and-google-charge).",
       ],
     },
@@ -257,7 +257,7 @@ Purchases.configure(withAPIKey: "test_...")`,
     },
     {
       q: "What does RevenueDot cost for a new app?",
-      a: "Nothing until the app makes $10,000 a month in store revenue. Above that, Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month.",
+      a: "Nothing until the app makes $10,000 a month in store revenue. Above that, Pro charges 0.5% of the revenue above $10,000, capped at $999 a month.",
     },
     {
       q: "Can Claude Code or Cursor add subscriptions for me?",
@@ -404,7 +404,7 @@ const CHEAPER: Guide = {
   metaDescription:
     "Cheaper RevenueCat alternatives compared by monthly fee at $10K, $100K and $1M: RevenueDot, Superwall, Qonversion, Adapty and Apphud, from each vendor's pricing page.",
   answer:
-    "RevenueDot Cloud is the cheapest hosted RevenueCat alternative at large sizes: free up to $10,000 a month, then 0.5% of the revenue above $10,000, never more than $999 a month. At $10,000 a month RevenueDot Cloud, Superwall and Apphud all cost $0; at $100,000 RevenueDot Cloud costs $450 against $800 for Qonversion and $1,000 for RevenueCat; at $1,000,000 it costs $999 against $8,000 for Qonversion and $10,000 for RevenueCat. Superwall can be $0 at any size if no purchases go through its paywalls.",
+    "RevenueDot Cloud is the cheapest hosted RevenueCat alternative at large sizes: free until your app makes $10,000 a month, then 0.5% of the revenue above $10,000, never more than $999 a month. At $10,000 a month RevenueDot Cloud, Superwall and Apphud all cost $0; at $100,000 RevenueDot Cloud costs $450 against $800 for Qonversion and $1,000 for RevenueCat; at $1,000,000 it costs $999 against $8,000 for Qonversion and $10,000 for RevenueCat. Superwall can be $0 at any size if no purchases go through its paywalls.",
   secondary: { href: "/tools/revenuecat-fee-calculator", label: "Calculate your own bill" },
   note: "Prices come from each vendor's public pricing page, checked October 2026, and the sources are linked under the table.",
   points: [
@@ -445,7 +445,7 @@ const CHEAPER: Guide = {
         "**Qonversion:** free up to $7,000 a month, then 0.8% of all tracked revenue with no ceiling, per its [pricing page](https://qonversion.io/pricing). Every feature is in the one plan.",
         "**Superwall:** subscription infrastructure is free at any scale. Paywalls are free up to $10,000 a month of paywall-attributed revenue, then 1% of that revenue; Startup adds $49 a month and Scale $199, per its [pricing page](https://superwall.com/pricing) and [pricing FAQ](https://superwall.com/docs/support/faq/2801653905-how-does-superwalls-pricing-work).",
         "**Apphud:** a free plan with $10,000 of monthly tracked revenue; Pro is $49 a month with $5,000 included, then $9.99 per extra $1,000; Enterprise from $100,000 a month is quoted, per its [pricing page](https://apphud.com/pricing).",
-        "**RevenueDot:** Cloud is free up to $10,000 a month; Cloud Standard is 0.5% of the revenue above $10,000, capped at $999 a month, per [RevenueDot pricing](/pricing). The server is open source under AGPL-3.0.",
+        "**RevenueDot:** Pro is free until your apps make $10,000 a month, then 0.5% of the revenue above $10,000, capped at $999 a month, per [RevenueDot pricing](/pricing). The server is open source under AGPL-3.0.",
       ],
     },
     {
@@ -472,7 +472,7 @@ const CHEAPER: Guide = {
   faq: [
     {
       q: "What is the cheapest RevenueCat alternative?",
-      a: "RevenueDot Cloud, which works with the RevenueCat SDK, is free up to $10,000 a month and never more than $999 a month. Superwall is free unless purchases convert through its paywalls, Qonversion charges 0.8% above $7,000, and Adapty 1% above $5,000.",
+      a: "RevenueDot Cloud, which works with the RevenueCat SDK, is free until your app makes $10,000 a month and never costs more than $999 a month. Superwall is free unless purchases convert through its paywalls, Qonversion charges 0.8% above $7,000, and Adapty 1% above $5,000.",
     },
     {
       q: "Is Superwall cheaper than RevenueCat?",
@@ -492,7 +492,7 @@ const CHEAPER: Guide = {
     },
     {
       q: "Is there a free RevenueCat alternative?",
-      a: "Yes. RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month. Superwall offers free subscription infrastructure and bills only on paywall revenue above $10,000, and Apphud has a free plan with $10,000 of tracked revenue.",
+      a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of revenue above that, never more than $999 a month. Superwall offers free subscription infrastructure and bills only on paywall revenue above $10,000, and Apphud has a free plan with $10,000 of tracked revenue.",
     },
   ],
   docs: [

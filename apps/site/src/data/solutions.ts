@@ -1,5 +1,5 @@
 // Solution landing pages: /solutions/<slug>. Facts come from docs/STATUS.md, the docs repo and src/lib/pricing.ts.
-// Writing rules: apps/site/CONTENT.md. Cloud Standard prices come from src/lib/pricing.ts.
+// Writing rules: apps/site/CONTENT.md. Pro and Enterprise prices come from src/lib/pricing.ts.
 import type { Landing } from "./types";
 
 const SIGNUP = "https://app.revenuedot.app/signup";
@@ -44,7 +44,7 @@ export const SOLUTIONS: Landing[] = [
         steps: [
           {
             name: "Create a free project and add your store apps",
-            text: `[Start free on Cloud](${SIGNUP}) and add your App Store, Google Play or Stripe app with its credentials. Paste RevenueDot's notification URLs into App Store Connect and Google Play. If your own server receives those notifications today, set the app's forward URL to it, so it keeps getting every notification while you move.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add your App Store, Google Play or Stripe app with its credentials. Paste RevenueDot's notification URLs into App Store Connect and Google Play. If your own server receives those notifications today, set the app's forward URL to it, so it keeps getting every notification while you move.`,
           },
           {
             name: "Import your products",
@@ -156,7 +156,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
     },
     points: [
       { title: "Free to $10K a month", text: "RevenueDot Cloud costs $0 while your app tracks up to $10,000 a month." },
-      { title: "Capped at $999 a month", text: "Above $10,000 a month Cloud Standard charges 0.5%, and the bill never passes $999." },
+      { title: "Capped at $999 a month", text: "Above $10,000 a month Pro charges 0.5% of the revenue above $10,000, and the bill never passes $999." },
       { title: "Test before the stores", text: "The Test Store lets you make purchases before you have an App Store or Google Play account." },
       { title: "Your data stays yours", text: "Customers and purchases live in Postgres tables you can query through the REST API and the dashboard." },
     ],
@@ -167,7 +167,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}). It takes an email address and a project name.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}). It takes an email address and a project name.`,
           },
           {
             name: "Add a Test Store app",
@@ -213,7 +213,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
             ["$50,000", "$500", "$200"],
             ["$100,000", "$1,000", "$450"],
           ],
-          caption: "Cloud Standard is 0.5% of tracked revenue above $10,000, capped at $999 a month.",
+          caption: "RevenueDot Cloud Pro is free until your app makes $10,000 a month, then 0.5% of revenue above $10,000, capped at $999 a month.",
         },
       },
       {
@@ -222,7 +222,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}). It takes an email address and a project name.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}). It takes an email address and a project name.`,
           },
           {
             name: "Import your RevenueCat project",
@@ -257,7 +257,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
     faq: [
       {
         q: "Is there a free in-app purchase backend for indie developers?",
-        a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue, and self-hosting is free under AGPL-3.0. Paywalls, charts, web checkout and the Test Store are included, and the RevenueDot SDK needs no RevenueCat account.",
+        a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue, then 0.5% of the revenue above that, never more than $999 a month. Paywalls, charts, web checkout and the Test Store are included, and the RevenueDot SDK needs no RevenueCat account.",
       },
       {
         q: "How much does RevenueCat cost for a small app?",
@@ -265,11 +265,11 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
       },
       {
         q: "Is there a free alternative to RevenueCat?",
-        a: "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month. An app on the RevenueCat SDK keeps it and changes one proxy URL line. Start free at https://app.revenuedot.app/signup.",
+        a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of the revenue above that, never more than $999 a month. An app on the RevenueCat SDK keeps it and changes one proxy URL line. Start for free at https://app.revenuedot.app/signup.",
       },
       {
         q: "What does RevenueDot Cloud cost above $10,000 a month?",
-        a: "Cloud Standard is 0.5% of tracked revenue above $10,000, capped at $999 a month, and the rate never rises. The Cloud free plan covers up to $10,000 a month.",
+        a: "Pro, the RevenueDot Cloud plan, charges 0.5% of tracked revenue above $10,000 and never more than $999 a month. The rate never rises, and every feature is included at every level. Below $10,000 a month, Pro costs $0. Apps above $1M a month move to Enterprise for volume pricing.",
       },
       {
         q: "Do I have to rewrite my app to leave RevenueCat?",
@@ -294,14 +294,14 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
     slug: "app-studios",
     section: "solutions",
     name: "App studios",
-    card: "Run every client app on RevenueDot Cloud with one project each and team roles. Free up to $10K a month.",
+    card: "Run every client app on RevenueDot Cloud with one project each and team roles. Free until your apps make $10K a month.",
     label: "Solution",
     title: "In-app purchase backend for app studios: many apps, one server, team roles",
     metaTitle: "In-app purchase backend for app studios and agencies",
     metaDescription:
-      "Run many apps on RevenueDot Cloud. One project per product, Admin, Developer and Viewer roles per project, free up to $10,000 a month.",
+      "Run many apps on RevenueDot Cloud. One project per product, Admin, Developer and Viewer roles per project, free until your apps make $10,000 a month.",
     answer:
-      "An app studio can run every app on RevenueDot Cloud. Each product is a project with its own catalog, customers, webhooks and API keys, and each person has an Admin, Developer or Viewer role per project. RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month.",
+      "An app studio can run every app on RevenueDot Cloud. Each product is a project with its own catalog, customers, webhooks and API keys, and each person has an Admin, Developer or Viewer role per project. RevenueDot Cloud is free until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month.",
     points: [
       { title: "One project per product", text: "Each project owns its catalog, customers, webhooks and secret keys, so clients never see each other's data." },
       { title: "Roles per project", text: "Admin, Developer and Viewer. A person can hold a different role in each project." },
@@ -341,7 +341,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
         h2: "What one server costs against one bill per app",
         label: "Cost",
         paras: [
-          "RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month. [Start free on Cloud](https://app.revenuedot.app/signup). See [pricing](/pricing).",
+          "RevenueDot Cloud is free until your apps make $10,000 a month, then 0.5% of revenue above $10,000, never more than $999 a month, across all your projects. Pro includes unlimited apps, projects and teammates. [Start for free on RevenueDot Cloud](https://app.revenuedot.app/signup). See [pricing](/pricing).",
           "For comparison, RevenueCat charges 1% of all monthly tracked revenue once it reaches $2,500 ([pricing](https://www.revenuecat.com/pricing), checked October 2026).",
         ],
       },
@@ -418,9 +418,9 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
     title: "RevenueDot Cloud, or the open-source server on Docker and Postgres",
     metaTitle: "RevenueDot Cloud, or run the server yourself",
     metaDescription:
-      "Start free on RevenueDot Cloud with no servers to run. The open-source server (AGPL-3.0) also runs from one Docker image plus Postgres 16.",
+      "Start for free on RevenueDot Cloud with no servers to run. The server is open source (AGPL-3.0); an Enterprise license covers every feature on your servers.",
     answer:
-      "RevenueDot Cloud is free up to $10,000 a month in tracked revenue, then 0.5%, never more than $999 a month, and needs no servers: sign up at https://app.revenuedot.app/signup. The same open-source code (AGPL-3.0) also runs as one Docker image next to Postgres 16 for teams that need their own infrastructure.",
+      "RevenueDot Cloud needs no servers, and Pro is free until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month. The same open-source code (AGPL-3.0) runs as one Docker image next to Postgres 16. An Enterprise license adds every enterprise feature on your own servers, an uptime SLA and a named engineer.",
     shot: {
       src: "dashboard-light.png",
       alt: "The RevenueDot dashboard showing customers, revenue and setup health",
@@ -499,11 +499,12 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         h2: "RevenueDot Cloud or your own server",
         label: "Choice",
         paras: [
-          `RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5%, never more than $999 a month, and needs no servers: [start free on Cloud](${SIGNUP}). Cloud and a server you run use the same code, API and schema. A server you run sends no telemetry, and talks only to Apple, Google, Stripe or Amazon if you connect them, your webhook endpoints and any forwarding URL you set.`,
+          `RevenueDot Cloud needs no servers, and Pro is free until your apps make $10,000 a month, then 0.5% of revenue above $10,000, never more than $999 a month: [start for free on RevenueDot Cloud](${SIGNUP}). Cloud and a server you run use the same code, API and schema. A server you run sends no telemetry, and talks only to Apple, Google, Stripe or Amazon if you connect them, your webhook endpoints and any forwarding URL you set.`,
         ],
         bullets: [
           "**Signatures:** a server you run signs with its own key, so set the SDK's entitlement verification to disabled on iOS and Android, or build the RevenueDot SDK with your own public key.",
           "**Status:** the Docker image builds on `node:24-slim`, and CI starts it against Postgres 16 on every pull request.",
+          "**License:** enterprise features on your own servers, such as organizations, single sign-on, SCIM and compliance exports, need an Enterprise license, which also brings a 99.9% uptime SLA, a DPA and a named engineer. [Contact sales](/contact-sales).",
         ],
       },
     ],
@@ -519,7 +520,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
       },
       {
         q: "What license is the RevenueDot server under?",
-        a: "The server and dashboard are AGPL-3.0, and any company can run them for its own apps. The AGPL asks you to share changes if you modify the server and offer it to others over a network.",
+        a: "The server and dashboard are AGPL-3.0, and any company can read the code and run it for its own apps. The AGPL asks you to share changes if you modify the server and offer it to others over a network. Enterprise features on your own servers need an Enterprise license.",
       },
       {
         q: "How do I upgrade a RevenueDot server I run?",
@@ -551,7 +552,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
     metaDescription:
       "RevenueDot Cloud does not pin data to an EU region today. Plain notes on where data sits, GDPR and what we do not claim.",
     answer:
-      "RevenueDot Cloud does not pin data to an EU region today. Teams that must keep in-app purchase data in the EU can run the open-source server in a region they choose, such as Frankfurt or Dublin, so every customer, purchase and receipt lives in their own Postgres database. This page is not legal advice.",
+      "RevenueDot Cloud does not pin data to an EU region today. Teams that must keep in-app purchase data in the EU can run RevenueDot in a region they choose, such as Frankfurt or Dublin, so every customer, purchase and receipt lives in their own Postgres. An Enterprise license adds every enterprise feature there, a DPA and answers to your security review. This page is not legal advice.",
     points: [
       { title: "Cloud location", text: "RevenueDot Cloud runs on Cloudflare's network and does not offer an EU-only region today." },
       { title: "Your own region", text: "A server you run yourself sits in any cloud region you pick, has no telemetry and never calls RevenueDot's servers." },
@@ -606,7 +607,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         h2: "RevenueDot Cloud and data location",
         label: "Cloud",
         paras: [
-          "RevenueDot Cloud runs on Cloudflare's network, and Cloudflare is its only listed subprocessor, with locations described as a global network and the United States. Cloud does not offer an EU-only region today. For transfers from the EEA, UK or Switzerland to countries without an adequacy decision, the EU Standard Contractual Clauses apply, according to the [data processing summary](/legal/dpa), which is a summary and not the signed agreement. If you need data to stay in the EU, the open-source server can run in a region you choose.",
+          "RevenueDot Cloud runs on Cloudflare's network, and Cloudflare is its only listed subprocessor, with locations described as a global network and the United States. Cloud does not offer an EU-only region today. For transfers from the EEA, UK or Switzerland to countries without an adequacy decision, the EU Standard Contractual Clauses apply, according to the [data processing summary](/legal/dpa), which is a summary and not the signed agreement. If you need data to stay in the EU, the open-source server can run in a region you choose, and an [Enterprise license](/contact-sales) covers every enterprise feature on your own servers.",
         ],
       },
       {
@@ -680,7 +681,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         steps: [
           {
             name: "Connect Stripe",
-            text: `[Start free on Cloud](${SIGNUP}), add a Stripe web provider and save a restricted key with Write access to Products, Prices, Checkout Sessions, Coupons and Promotion Codes, and Read on Subscriptions, Invoices, Charges and Customers.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}), add a Stripe web provider and save a restricted key with Write access to Products, Prices, Checkout Sessions, Coupons and Promotion Codes, and Read on Subscriptions, Invoices, Charges and Customers.`,
           },
           {
             name: "Add a web config",
@@ -765,7 +766,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
       },
       {
         q: "Does RevenueDot take a cut of web payments?",
-        a: "Payments run on your own Stripe account. RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, and Cloud Standard is 0.5% above that, capped at $999 a month. Stripe charges its own fees.",
+        a: "Payments run on your own Stripe account. RevenueDot Cloud Pro is free until your app makes $10,000 a month, then 0.5% of revenue above that, capped at $999 a month. Stripe charges its own fees.",
       },
       {
         q: "Can I see where visitors drop off in a funnel?",
@@ -822,7 +823,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         steps: [
           {
             name: "Create a free project and your store apps",
-            text: `[Start free on Cloud](${SIGNUP}) and add an App Store app and a Google Play app.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}) and add an App Store app and a Google Play app.`,
           },
           {
             name: "Add the store credentials",
@@ -931,7 +932,7 @@ curl http://localhost:8787/v1/health        # {"status":"ok"}`,
         steps: [
           {
             name: "Create a free Cloud project",
-            text: `[Start free on Cloud](${SIGNUP}). Add your store apps, or a Test Store app to start without store accounts.`,
+            text: `[Start for free on RevenueDot Cloud](${SIGNUP}). Add your store apps, or a Test Store app to start without store accounts.`,
           },
           {
             name: "Connect your agent to the MCP server",

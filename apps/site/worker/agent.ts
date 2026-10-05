@@ -8,7 +8,7 @@
 // Every route but postcall needs `x-agent-token: <AGENT_TOKEN>`; postcall is signed with ELEVENLABS_WEBHOOK_SECRET.
 // Outbound calls to new hot and warm leads start from the contact-sales form (startOutboundCall, below).
 import { parsePhoneNumberFromString } from "libphonenumber-js/max";
-import { PLANS } from "../src/lib/pricing";
+import { CARD_RULE, GRACE_DAYS, PLANS } from "../src/lib/pricing";
 import { isEmail, label, vendorLabel, NEEDS, PLATFORMS, REVENUE, SCORE_LABEL, TIMELINE, type Lead, type Score } from "./lead";
 
 export interface D1Stmt { run(): Promise<unknown>; all<T = Record<string, unknown>>(): Promise<{ results: T[] }> }
@@ -287,7 +287,7 @@ export const INFO_LINKS: Record<string, [string, string]> = {
   self_host: ["Self-hosting guide", "https://revenuedot.app/docs/guides/self-hosting"],
   sdks: ["SDKs", "https://revenuedot.app/docs/sdks"],
   enterprise: ["Enterprise: talk to sales", "https://revenuedot.app/contact-sales"],
-  signup: ["Start free on RevenueDot Cloud", "https://app.revenuedot.app/signup"],
+  signup: ["Start for free on RevenueDot Cloud", "https://app.revenuedot.app/signup"],
   book_call: ["Pick a time for a 30-minute call with Kai", "https://calendar.google.com/calendar/appointments/schedules/AcZssZ0IxzgwYNVDGggPF9qelyDSh51L5UzFNcrDE2u3eMTwqpLfGsrRxjx2TxY-WyehZVX1ns8MhQWg"],
 };
 
@@ -410,9 +410,13 @@ export function excerpt(body: string, ts: string[], max = 1500) {
   return out.length > max ? `${out.slice(0, max).replace(/\s+\S*$/, "")} …` : out;
 }
 
-const PRICING_WORDS = /\b(price|prices|pricing|cost|costs|pay|paid|plan|plans|free|fee|fees|charge|bill|billing|enterprise|standard|cheap|expensive|\$)/i;
+const PRICING_WORDS = /\b(price|prices|pricing|cost|costs|pay|paid|plan|plans|free|fee|fees|charge|bill|billing|enterprise|pro\b|card\b|cards\b|trial\b|cheap|expensive|\$)/i;
 /** Plans and prices exactly as the pricing page states them (src/lib/pricing.ts). */
-export const FACTS = PLANS.map((p) => `${p.name}: ${p.price}, ${p.priceNote}. ${p.summary}${p.available ? "" : " Coming soon: not available to buy yet, this is the price it launches at."}`).join("\n");
+export const FACTS = [
+  "RevenueDot has two plans, Pro and Enterprise.",
+  ...PLANS.map((p) => `${p.name}: ${p.price}, ${p.priceNote}. ${p.summary} Includes: ${p.features.join("; ")}.`),
+  `${CARD_RULE} After an app's first live sale, the account has ${GRACE_DAYS} days to start Pro; after that, live charts, customer data, exports and webhooks pause until it does. The app keeps working: purchases are always verified and every purchase unlocks.`,
+].join("\n");
 
 async function docs(request: Request, env: AgentEnv): Promise<Response> {
   const q = str(new URL(request.url).searchParams.get("q"), 300);

@@ -6,11 +6,11 @@ const src = (label: string, url: string): Source => ({ label, url });
 
 export const ALTERNATIVES_INTRO: { answer: string; faq: { q: string; a: string }[]; checked: string } = {
   answer:
-    "The best RevenueCat alternative depends on what you want to change. RevenueDot is best if you want open source, a free start on Cloud and to keep the RevenueCat SDK. Adapty and Qonversion are the closest hosted alternatives, with paywall builders and A/B tests. Superwall is best for paywall experiments and bills only on paywall revenue. Apphud suits small apps on flat plans. Building in-house suits one-platform apps with simple products.",
+    "The best RevenueCat alternative depends on what you want to change. RevenueDot is best if you want open source, a hosted plan that is free until your app makes $10,000 a month, and to keep the RevenueCat SDK. Adapty and Qonversion are the closest hosted alternatives, with paywall builders and A/B tests. Superwall is best for paywall experiments and bills only on paywall revenue. Apphud suits small apps on flat plans. Building in-house suits one-platform apps with simple products.",
   faq: [
     {
       q: "What is the cheapest RevenueCat alternative?",
-      a: "For most apps, RevenueDot: Cloud is free up to $10,000 a month, then 0.5% of the revenue above that, never more than $999 a month. Superwall makes subscription infrastructure free and bills 1% only on paywall revenue above $10K. Qonversion is free to $7K, then 0.8% of all revenue. Adapty is free under $5K, then 1%. RevenueCat is free to $2,500, then 1% of all revenue.",
+      a: "For most apps, RevenueDot: RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of the revenue above that, never more than $999 a month. Superwall makes subscription infrastructure free and bills 1% only on paywall revenue above $10K. Qonversion is free to $7K, then 0.8% of all revenue. Adapty is free under $5K, then 1%. RevenueCat is free to $2,500, then 1% of all revenue.",
     },
     {
       q: "Is there an open-source alternative to RevenueCat?",
@@ -35,12 +35,12 @@ export const ALTERNATIVES: Alternative[] = [
     bestFor: "Teams that want to keep the RevenueCat SDK and cap their bill at $999 a month.",
     summary:
       "An open-source backend for in-app purchases and subscriptions that implements the API the RevenueCat SDKs call. You change the SDK's proxy URL and keep your app code, then run it on RevenueDot Cloud. It includes 43 charts, paywalls with a visual editor, experiments, web checkout, 36 integrations, Refund Control and win-back.",
-    pricing: "Cloud is free up to $10,000 monthly tracked revenue. Cloud Standard is 0.5% of revenue above $10,000, capped at $999 a month.",
+    pricing: "Pro is free until your app makes $10,000 a month in tracked revenue, then 0.5% of revenue above $10,000, capped at $999 a month.",
     openSource: "Yes. Server and dashboard are AGPL-3.0; SDK forks, CLI and MCP server are MIT.",
     selfHost: "Not needed: RevenueDot Cloud is hosted for you.",
     pros: [
       "Keeps the RevenueCat SDK, so switching is one URL and no purchase-code rewrite.",
-      "Free on Cloud to $10K a month in tracked revenue, then 0.5%, with a cap of $999 a month.",
+      "Free until your app makes $10K a month in tracked revenue, then 0.5%, with a cap of $999 a month.",
       "Open source: the server and dashboard code is on GitHub under AGPL-3.0.",
       "Importer for RevenueCat projects and side-by-side forwarding of store notifications.",
     ],
@@ -53,7 +53,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("RevenueDot pricing", "https://revenuedot.app/pricing"),
       src("RevenueDot on GitHub", "https://github.com/revenuedot/revenuedot"),
     ],
-    evidence: ["RevenueDot/pricing/plans", "RevenueDot/github-revenuedot/license"],
+    evidence: ["RevenueDot/github-revenuedot/license"],
     visual: "paywalls",
     clip: "charts",
     compare: "/compare/revenuedot-vs-revenuecat",
@@ -242,6 +242,7 @@ export const ALTERNATIVES: Alternative[] = [
       "Annual contracts.",
     ],
     sources: [src("Nami ML pricing page", "https://www.nami.ml/pricing")],
+    evidence: ["Nami ML/pricing/enterprise-only"],
   },
   {
     name: "Build it in-house (StoreKit 2, Play Billing and your own server)",
@@ -268,6 +269,5 @@ export const ALTERNATIVES: Alternative[] = [
       src("Apple StoreKit in-app purchase docs", "https://developer.apple.com/documentation/storekit/in-app_purchase"),
     ],
     evidence: ["Apple/storekit-in-app-purchase/overview", "Apple/app-store-server-notifications/overview", "Google/play-billing-integrate/guide"],
-    evidence: ["Nami ML/pricing/enterprise-only"],
   },
 ];

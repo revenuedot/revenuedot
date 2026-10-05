@@ -70,10 +70,10 @@ const jsonld = [
     <PageHead label={`MCP · checked ${CHECKED}`} title={title}
       lede={`RevenueCat runs a hosted MCP server for RevenueCat projects. RevenueDot runs an open-source one at ${URL_MCP}, with 38 tools, for any app that ships the RevenueCat SDK with a RevenueDot backend: reads are free, writes wait for your approval.`}>
       <div class="btns">
-        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn" href={SITE.signup}>Start for free</a>
         <a class="btn secondary" href="#config">Copy the config <span class="arrow">↓</span></a>
       </div>
-      <p class="small muted note">Free up to $10,000 a month in tracked revenue. Already have an account? <a href={SITE.login}>Sign in</a></p>
+      <p class="small muted note">Free until your apps make $10,000 a month. Already have an account? <a href={SITE.login}>Sign in</a></p>
     </PageHead>
   </div>
 
@@ -248,7 +248,7 @@ npx -y @revenuedot/mcp
             <tr><th scope="row">Clients the docs list</th><td>Claude (web, Desktop, Code), Codex, Cursor, VS Code Copilot, MCP Inspector; "the recommended way to get started" is its AI Toolkit plugin</td><td>Claude, Claude Code, ChatGPT, Codex, Cursor, Windsurf and any streamable HTTP client; the Claude connector and ChatGPT plugin are the same server</td></tr>
             <tr><th scope="row">Tools</th><td>A tools reference grouped into projects and apps, products and prices, entitlements, offerings and packages, targeting and audiences, paywalls, customers and subscriptions, in-app currencies, charts and experiments, integrations and webhooks, and SDK compatibility; each tool marked Read or Write</td><td>38 tools in the table above: apps and store connections, catalog, customers and access, subscriptions and money, webhooks, revenue. No paywall, experiment, targeting or currency tools yet</td></tr>
             <tr><th scope="row">Permissions</th><td>"Access follows your RevenueCat account permissions"; a read-only API key works for viewing</td><td>Three scopes chosen at sign-in; money actions behind a separate permission the assistant must ask for</td></tr>
-            <tr><th scope="row">Plan note</th><td>"Custom remote MCP connectors are in beta on Claude; free plans can use one custom connector"</td><td>Same Claude limit applies to any custom connector. RevenueDot Cloud is free up to $10,000 a month, then 0.5%, never more than $999 a month</td></tr>
+            <tr><th scope="row">Plan note</th><td>"Custom remote MCP connectors are in beta on Claude; free plans can use one custom connector"</td><td>Same Claude limit applies to any custom connector. RevenueDot Cloud is free until your apps make $10,000 a month, then 0.5%, never more than $999 a month</td></tr>
             <tr><th scope="row">Source</th><td>Closed</td><td>Open source, MIT, on <a href={SITE.mcp} rel="noopener">GitHub</a> and <a href="https://www.npmjs.com/package/@revenuedot/mcp" rel="noopener">npm</a></td></tr>
           </tbody>
         </table>

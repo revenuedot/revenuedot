@@ -1,5 +1,5 @@
 import { SITE, type Crumb, type Faq } from "../site";
-import { PLANS } from "./pricing";
+import { CARD_RULE, ENTERPRISE_PRICE, PLANS, PRICE_LINE } from "./pricing";
 
 const ORG_ID = `${SITE.url}/#organization`;
 const APP_ID = `${SITE.url}/#software`;
@@ -23,10 +23,9 @@ export function website() {
   return { "@type": "WebSite", "@id": `${SITE.url}/#website`, name: SITE.name, url: SITE.url, publisher: { "@id": ORG_ID } };
 }
 
-/** The product, with its free plans as offers. Usage-priced and custom plans have no fixed price, so they are left out. */
-const FREE_PLANS = ["cloud-free"];
-
+/** The product, with its two plans as offers: Pro (price 0, usage-priced above $10,000 a month) and Enterprise (from $50,000 a year). */
 export function softwareApplication() {
+  const [pro, ent] = [PLANS.find((p) => p.id === "pro")!, PLANS.find((p) => p.id === "enterprise")!];
   return {
     "@type": "SoftwareApplication",
     "@id": APP_ID,
@@ -39,14 +38,25 @@ export function softwareApplication() {
     isAccessibleForFree: true,
     publisher: { "@id": ORG_ID },
     sameAs: [SITE.github],
-    offers: PLANS.filter((p) => p.available && FREE_PLANS.includes(p.id)).map((p) => ({
-      "@type": "Offer",
-      name: p.name,
-      price: "0",
-      priceCurrency: "USD",
-      description: p.summary,
-      url: p.id === "cloud-free" ? SITE.signup : `${SITE.url}/pricing`,
-    })),
+    offers: [
+      {
+        "@type": "Offer",
+        name: `RevenueDot ${pro.name}`,
+        price: "0",
+        priceCurrency: "USD",
+        description: `${PRICE_LINE} ${CARD_RULE}`,
+        url: SITE.signup,
+      },
+      {
+        "@type": "Offer",
+        name: `RevenueDot ${ent.name}`,
+        price: "50000",
+        priceCurrency: "USD",
+        priceSpecification: { "@type": "UnitPriceSpecification", minPrice: 50000, priceCurrency: "USD", unitText: "YEAR" },
+        description: `${ENTERPRISE_PRICE}. ${ent.summary}`,
+        url: `${SITE.url}/contact-sales`,
+      },
+    ],
   };
 }
 

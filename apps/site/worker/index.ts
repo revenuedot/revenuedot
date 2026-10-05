@@ -125,7 +125,7 @@ async function contactSales(request: Request, env: Env, ctx?: Ctx): Promise<Resp
   if (!body || typeof body.data !== "object" || body.data === null) return json({ ok: false, error: "Send the form as JSON or form data." }, 400);
   const { data, form } = body;
   const done = (next: "sales" | "self_serve") => (form ? page("Thanks. We will reply within one business day.", next === "self_serve"
-    ? `Your apps fit RevenueDot Cloud, which is free up to $10,000 a month. <a href="https://app.revenuedot.app/signup">Start free on Cloud</a> while you wait.`
+    ? `Your apps fit RevenueDot Pro, which costs $0 until your apps make $10,000 a month. <a href="https://app.revenuedot.app/signup">Start for free</a> while you wait.`
     : `We will email you to set up a 30-minute call. <a href="/pricing">Back to pricing</a>.`) : json({ ok: true, next }));
 
   // Bots: a filled hidden field, or a form sent faster than a person can type. They get a normal-looking answer.

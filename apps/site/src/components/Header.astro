@@ -1,6 +1,7 @@
 ---
 import Logo from "./Logo.astro";
 import { NAV, SITE } from "../site";
+import { SIGNUP_CTA } from "../lib/pricing";
 interface Props { path: string }
 const { path } = Astro.props;
 const current = (href: string) => path === href || path.startsWith(href + "/");
@@ -14,11 +15,11 @@ const current = (href: string) => path === href || path.startsWith(href + "/");
     <div class="actions">
       <a class="signin" href={SITE.login}>Sign in</a>
       <a class="btn secondary sm gh" href={SITE.github} rel="noopener">GitHub</a>
-      <a class="btn sm" href={SITE.signup}>Start free</a>
+      <a class="btn sm" href={SITE.signup}>{SIGNUP_CTA}</a>
       <details class="menu">
         <summary aria-label="Menu"><span></span><span></span></summary>
         <nav class="sheet" aria-label="Mobile">
-          <div class="sheet-cta"><a class="btn" href={SITE.signup}>Start free on Cloud</a><a class="btn secondary" href={SITE.login}>Sign in</a></div>
+          <div class="sheet-cta"><a class="btn" href={SITE.signup}>{SIGNUP_CTA}</a><a class="btn secondary" href={SITE.login}>Sign in</a></div>
           {NAV.map((n) => <a href={n.href} aria-current={current(n.href) ? "page" : undefined}>{n.label}</a>)}
           <a href="/changelog">Changelog</a>
           <a href={SITE.github} rel="noopener">GitHub</a>
@@ -49,7 +50,7 @@ const current = (href: string) => path === href || path.startsWith(href + "/");
   .sheet .sheet-cta a { justify-content: center; padding: 0 12px; border-bottom: 1px solid var(--border); }
   @media (max-width: 1140px) { .nav { display: none; } .menu { display: block; } .bar { gap: 16px; } }
   @media (max-width: 640px) { .gh { display: none; } }
-  /* Phones: logo, Sign in, Start free and the menu button must fit in 358px (390px less the 16px gutters). */
+  /* Phones: logo, Sign in, Start for free and the menu button must fit in 358px (390px less the 16px gutters). */
   @media (max-width: 420px) { .bar { gap: 10px; } .brand :global(svg) { height: 18px; width: auto; } .signin { padding: 0 4px; } .actions { gap: 6px; } }
   @media (max-width: 385px) { .signin { display: none; } }
   @media (max-width: 340px) { .bar { gap: 6px; } .brand :global(svg) { height: 16px; } }

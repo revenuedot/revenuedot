@@ -3,11 +3,10 @@
 // Every cell about another vendor is backed by a source in its row. Vendor facts checked October 2026.
 import type { Block, ComparePage, Source } from "./types";
 import type { Faq } from "../site";
+import { cloudBill, usd } from "../lib/pricing.ts"; // with .ts so scripts/og.mjs can load this file in plain Node
 
 const CHECKED = "October 2026";
 const SIGNUP = "https://app.revenuedot.app/signup";
-
-const usd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 
 // ---- Sources -------------------------------------------------------------------------------------------------------
 const src = (label: string, url: string): Source => ({ label, url });
@@ -141,7 +140,6 @@ const E = {
   appleSbp: "Apple/subscriptions/small-business-program",
   gFees: "Google/play-service-fees/service-fees",
   gPolicy: "Google/play-payments-policy/billing-system",
-  rdPlans: "RevenueDot/pricing/plans",
   rdLicense: "RevenueDot/github-revenuedot/license",
 };
 
@@ -151,7 +149,6 @@ const LEVELS = [5_000, 10_000, 50_000, 250_000, 1_000_000];
 const rcBill = (m: number) => (m >= 2_500 ? m * 0.01 : 0); // 1% of ALL tracked revenue once at $2,500 (pricing FAQ, staff reply)
 const adaptyBill = (m: number) => (m > 5_000 ? m * 0.01 : 0); // 1% of all revenue once past $5K (pricing FAQ)
 const qonversionBill = (m: number) => (m > 7_000 ? m * 0.008 : 0); // 0.8% of ALL tracked revenue once past $7K (pricing FAQ)
-const cloudBill = (m: number) => Math.min(999, Math.max(0, m - 10_000) * 0.005); // Cloud Standard: 0.5% above $10K, capped at $999
 const apphudPro = (m: number) => 49 + (Math.max(0, m - 5_000) / 1_000) * 9.99; // Pro: $49 incl. $5K, then $9.99 per extra $1,000
 
 type Col = { head: string; cell: (m: number) => string };
@@ -174,12 +171,12 @@ const priceTable = (intro: string, cols: Col[], sources: Source[], evidence: str
 });
 
 const RD_RATE =
-  "RevenueDot Cloud is free up to $10,000 a month. Above that, Cloud Standard charges 0.5% of the revenue above $10,000, capped at $999 a month.";
+  "RevenueDot Cloud is free until your app makes $10,000 a month. Above that, Pro charges 0.5% of the revenue above $10,000, capped at $999 a month.";
 
 // ---- RevenueDot cells reused across pages ----------------------------------------------------------------------------
 const RD = {
   license: "Open source. The server and dashboard are AGPL-3.0; the SDK forks, CLI and MCP server are MIT",
-  where: "RevenueDot Cloud, free up to $10K a month in tracked revenue",
+  where: "RevenueDot Cloud, free until your app makes $10K a month",
   sdk: "Works with the stock RevenueCat SDKs (set the proxy URL), plus hard forks of all ten SDKs on GitHub",
   stores: "App Store, Google Play, Amazon Appstore, Samsung Galaxy Store, Roku, Stripe and Paddle",
   web: "Hosted Stripe checkout, purchase links, funnels, web discounts and custom pay domains",
@@ -212,18 +209,18 @@ const VS_REVENUECAT: ComparePage = {
   slug: "revenuedot-vs-revenuecat",
   kind: "vs",
   columns: ["RevenueDot", "RevenueCat"],
-  title: "RevenueDot vs RevenueCat: open source, same SDK, free on Cloud to $10K",
+  title: "RevenueDot vs RevenueCat: open source, same SDK, free until $10K a month",
   metaTitle: "RevenueDot vs RevenueCat: Open Source Alternative",
-  metaDescription: "RevenueDot vs RevenueCat compared: price, stores, paywalls, charts, web billing and data ownership. Same SDK, open source, free on Cloud to $10K a month.",
-  card: "Same SDK, open source, free to $10K a month. Where RevenueCat is still ahead.",
+  metaDescription: "RevenueDot vs RevenueCat compared: price, stores, paywalls, charts, web billing and data ownership. Same SDK, open source, free until $10K a month.",
+  card: "Same SDK, open source, free until $10K a month. Where RevenueCat is still ahead.",
   answer:
-    "RevenueDot is an open-source backend that the stock RevenueCat SDKs already talk to, so you keep your app code and change one URL. It covers App Store, Google Play, Amazon and Stripe, 43 charts, paywalls, experiments and 36 integrations. RevenueCat is the mature choice, with SOC 2 and years of production traffic. RevenueDot costs less: free to $10K a month, against RevenueCat's 1% of all revenue from $2,500.",
+    "RevenueDot is an open-source backend that the stock RevenueCat SDKs already talk to, so you keep your app code and change one URL. It covers App Store, Google Play, Amazon and Stripe, 43 charts, paywalls, experiments and 36 integrations. RevenueCat is the mature choice, with SOC 2 and years of production traffic. RevenueDot costs less: free until your app makes $10K a month, against RevenueCat's 1% of all revenue from $2,500.",
   choose: [
     {
       name: "RevenueDot",
       reasons: [
         "You want to keep the RevenueCat SDK in your app and stop paying 1% of every tracked dollar once you pass $2,500 a month.",
-        "You want to start free on RevenueDot Cloud, up to $10,000 a month in tracked revenue, and never pay more than $999 a month.",
+        "You want RevenueDot Cloud, which is free until your app makes $10,000 a month and never costs more than $999 a month.",
         "You want to read and change the code that grants access, and export everything with plain SQL.",
         "You want paywalls, experiments, charts, web checkout and win-back without a second vendor or a revenue share on top.",
         "You are comfortable adopting a young open-source project and reporting what you find.",
@@ -262,12 +259,11 @@ const VS_REVENUECAT: ComparePage = {
     {
       topic: "Price",
       cells: [
-        "Cloud free to $10K a month; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
         "Free to $2,500 monthly tracked revenue, then 1% of all tracked revenue, not only the part above $2,500",
       ],
       sources: [RC_PRICING, RC_STAFF],
-      evidence: [E.rcPrice, E.rcStaff, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.rcPrice, E.rcStaff],
     },
     {
       topic: "Stores",
@@ -358,7 +354,7 @@ const VS_REVENUECAT: ComparePage = {
       " Enterprise plans on either side are custom and not shown.",
     [COL_RC, COL_CLOUD],
     [RC_PRICING, RC_STAFF],
-    [E.rcPrice, E.rcStaff, E.rdPlans],
+    [E.rcPrice, E.rcStaff],
   ),
   blocks: [
     RD_MIGRATION_RC,
@@ -386,11 +382,11 @@ const VS_REVENUECAT: ComparePage = {
   faq: [
     {
       q: "Is RevenueDot a RevenueCat alternative?",
-      a: "Yes. RevenueDot is an open-source backend for in-app purchases that implements the API the RevenueCat SDKs call. You keep the RevenueCat SDK, set its proxy URL to RevenueDot, and keep your offerings, entitlements and customers. It runs on RevenueDot Cloud, free up to $10,000 a month in tracked revenue.",
+      a: "Yes. RevenueDot is an open-source backend for in-app purchases that implements the API the RevenueCat SDKs call. You keep the RevenueCat SDK, set its proxy URL to RevenueDot, and keep your offerings, entitlements and customers. It runs on RevenueDot Cloud, free until your app makes $10,000 a month.",
     },
     {
       q: "Is RevenueDot cheaper than RevenueCat?",
-      a: "Yes at every size above $2,500 a month. RevenueCat charges 1% of all tracked revenue once you reach $2,500: $500 a month at $50,000. RevenueDot Cloud is free to $10,000, and Cloud Standard is 0.5% of revenue above that, capped at $999: about $200 at $50,000.",
+      a: "Yes at every size above $2,500 a month. RevenueCat charges 1% of all tracked revenue once you reach $2,500: $500 a month at $50,000. RevenueDot Cloud is free until your app makes $10,000 a month, then charges 0.5% of revenue above that, capped at $999: about $200 at $50,000.",
     },
     {
       q: "Does RevenueCat charge 1% on all revenue or only above $2,500?",
@@ -420,18 +416,18 @@ const VS_ADAPTY: ComparePage = {
   slug: "revenuedot-vs-adapty",
   kind: "vs",
   columns: ["RevenueDot", "Adapty"],
-  title: "RevenueDot vs Adapty: open source and free on Cloud to $10K vs hosted paywall tooling",
+  title: "RevenueDot vs Adapty: open source and free until $10K a month vs hosted paywall tooling",
   metaTitle: "RevenueDot vs Adapty: Price, Features, Open Source",
   metaDescription: "RevenueDot vs Adapty compared: price at $5K to $1M a month, paywalls, A/B tests, web payments, SOC 2 and open source. Sourced and checked October 2026.",
-  card: "Open source and free on Cloud to $10K, or a hosted growth suite with SOC 2. The honest split.",
+  card: "Open source and free until $10K a month, or a hosted growth suite with SOC 2. The honest split.",
   answer:
-    "Choose Adapty if you want a hosted growth suite with SOC 2 Type II, an AI flow and paywall builder, and a $5K free tier. Choose RevenueDot if you want an open-source backend on Cloud, the same RevenueCat SDK you may already use, and a bill that stops at $999 a month. Adapty charges 1% of all revenue once you pass $5K. RevenueDot Cloud is free to $10K.",
+    "Choose Adapty if you want a hosted growth suite with SOC 2 Type II, an AI flow and paywall builder, and a $5K free tier. Choose RevenueDot if you want an open-source backend on Cloud, the same RevenueCat SDK you may already use, and a bill that stops at $999 a month. Adapty charges 1% of all revenue once you pass $5K. RevenueDot Cloud is free until your app makes $10K a month.",
   choose: [
     {
       name: "RevenueDot",
       reasons: [
         "You already use, or want, the RevenueCat SDK, and you want to switch backends by changing one URL.",
-        "You want to start free on RevenueDot Cloud and keep your RevenueCat SDK code.",
+        "You want to start for free on RevenueDot Cloud and keep your RevenueCat SDK code.",
         "You want webhooks, exports, charts and refund tools included, with no add-on fees.",
         "You want to read the code that grants access to your subscribers.",
       ],
@@ -468,12 +464,11 @@ const VS_ADAPTY: ComparePage = {
     {
       topic: "Price",
       cells: [
-        "Cloud free to $10K a month; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
         "Free under $5K a month, then 1% of that month's revenue, counted before store fees",
       ],
       sources: [AD_PRICING, AD_BLOG],
-      evidence: [E.adPrice, E.adWhen, E.adBlog, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.adPrice, E.adWhen, E.adBlog],
     },
     {
       topic: "Add-on fees",
@@ -543,7 +538,7 @@ const VS_ADAPTY: ComparePage = {
       " Adapty add-ons and Enterprise are not included.",
     [COL_ADAPTY, COL_CLOUD],
     [AD_PRICING],
-    [E.adPrice, E.adWhen, E.rdPlans],
+    [E.adPrice, E.adWhen],
   ),
   blocks: [
     {
@@ -560,10 +555,10 @@ const VS_ADAPTY: ComparePage = {
     },
     {
       h2: "Where the two products differ most",
-      paras: ["Both are priced on tracked revenue, and both run a free tier. The real differences are where your data lives and how the bill behaves."],
+      paras: ["Both are priced on tracked revenue, and both are free below a revenue limit. The real differences are where your data lives and how the bill behaves."],
       bullets: [
-        "**Hosting.** Adapty is a hosted service with optional EU or US residency on Enterprise. RevenueDot runs on RevenueDot Cloud, free up to $10K a month in tracked revenue.",
-        "**The bill.** Adapty's 1% applies to the whole month once you pass $5K, plus add-ons. RevenueDot Cloud Standard is 0.5% above $10K, capped at $999.",
+        "**Hosting.** Adapty is a hosted service with optional EU or US residency on Enterprise. RevenueDot runs on RevenueDot Cloud, free until your app makes $10K a month.",
+        "**The bill.** Adapty's 1% applies to the whole month once you pass $5K, plus add-ons. RevenueDot Pro is 0.5% above $10K, capped at $999.",
         "**SDK.** Adapty uses its own SDK, so your purchase code changes. RevenueDot keeps the RevenueCat SDK.",
         "**Compliance.** Adapty holds SOC 2 Type II. RevenueDot does not yet.",
       ],
@@ -580,7 +575,7 @@ const VS_ADAPTY: ComparePage = {
   faq: [
     {
       q: "Is Adapty cheaper than RevenueDot?",
-      a: "No, not above $5K a month. Adapty is free under $5K a month, then 1% of all revenue: $500 at $50,000. RevenueDot Cloud is free to $10,000, and Cloud Standard is 0.5% above that, capped at $999: about $200 at $50,000. Adapty also charges extra for add-ons such as Refund Saver and attribution.",
+      a: "No, not above $5K a month. Adapty is free under $5K a month, then 1% of all revenue: $500 at $50,000. RevenueDot Cloud is free until your app makes $10,000 a month, then charges 0.5% above that, capped at $999: about $200 at $50,000. Adapty also charges extra for add-ons such as Refund Saver and attribution.",
     },
     {
       q: "Does Adapty have SOC 2?",
@@ -606,12 +601,12 @@ const VS_QONVERSION: ComparePage = {
   slug: "revenuedot-vs-qonversion",
   kind: "vs",
   columns: ["RevenueDot", "Qonversion"],
-  title: "RevenueDot vs Qonversion: open source and free on Cloud to $10K vs a hosted 0.8% plan",
+  title: "RevenueDot vs Qonversion: open source and free until $10K a month vs a hosted 0.8% plan",
   metaTitle: "RevenueDot vs Qonversion: Price, Features, Open Source",
   metaDescription: "RevenueDot vs Qonversion compared: price at $5K to $1M a month, stores, paywall builder, A/B tests and MCP. Sourced, checked October 2026.",
-  card: "A hosted 0.8% plan with everything included, or an open-source backend that is free on Cloud to $10K.",
+  card: "A hosted 0.8% plan with everything included, or an open-source backend that is free until $10K a month.",
   answer:
-    "Qonversion is a hosted service with one plan: free to $7K a month, then 0.8% of all tracked revenue, with every feature included. It is cheaper than RevenueCat's 1%, but it is closed and you must change SDKs. RevenueDot is open source and works with the RevenueCat SDK you may already ship. Its Cloud is free to $10K, and Cloud Standard stops at $999 a month.",
+    "Qonversion is a hosted service with one plan: free to $7K a month, then 0.8% of all tracked revenue, with every feature included. It is cheaper than RevenueCat's 1%, but it is closed and you must change SDKs. RevenueDot is open source and works with the RevenueCat SDK you may already ship. RevenueDot Cloud is free until your app makes $10K a month, and Pro never costs more than $999 a month.",
   choose: [
     {
       name: "RevenueDot",
@@ -654,16 +649,15 @@ const VS_QONVERSION: ComparePage = {
     {
       topic: "Price",
       cells: [
-        "Cloud free to $10K a month; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
         "Free to $7K a month in tracked revenue, then 0.8% of all of it, not only the part above $7K",
       ],
       sources: [QO_PRICING],
-      evidence: [E.qoPrice, E.qoTotal, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.qoPrice, E.qoTotal],
     },
     {
       topic: "Plans and add-ons",
-      cells: ["Cloud Free, Cloud Standard and Enterprise; every plan has the full open-source core", "One Pro plan with every feature, unlimited apps and seats; Enterprise adds contract terms, an SLA and a success manager"],
+      cells: ["Pro and Enterprise; Pro includes every feature, with unlimited apps and teammates", "One Pro plan with every feature, unlimited apps and seats; Enterprise adds contract terms, an SLA and a success manager"],
       sources: [QO_PRICING],
       evidence: [E.qoPlan],
     },
@@ -735,7 +729,7 @@ const VS_QONVERSION: ComparePage = {
       " Enterprise plans are custom and not shown.",
     [COL_QONVERSION, COL_CLOUD],
     [QO_PRICING],
-    [E.qoPrice, E.qoTotal, E.rdPlans],
+    [E.qoPrice, E.qoTotal],
   ),
   blocks: [
     {
@@ -753,7 +747,7 @@ const VS_QONVERSION: ComparePage = {
     {
       h2: "How the 0.8% rate behaves as you grow",
       paras: [
-        "Qonversion's rate is the lowest published among the hosted vendors, but it applies to your whole tracked revenue once you pass $7K, with no ceiling. At $250,000 a month that is $2,000. RevenueDot Cloud Standard is 0.5% above $10K, capped at $999,.",
+        "Qonversion's rate is the lowest published among the hosted vendors, but it applies to your whole tracked revenue once you pass $7K, with no ceiling. At $250,000 a month that is $2,000. RevenueDot Pro is 0.5% above $10K, capped at $999.",
         "Qonversion's pricing page says the bill follows your revenue month to month, so a month at or under $7K is free whatever came before.",
       ],
     },
@@ -769,7 +763,7 @@ const VS_QONVERSION: ComparePage = {
   faq: [
     {
       q: "Is Qonversion cheaper than RevenueCat?",
-      a: "Yes. Qonversion is free to $7K a month, then 0.8% of all tracked revenue: $400 at $50,000. RevenueCat is free to $2,500, then 1% of all tracked revenue: $500 at $50,000. RevenueDot Cloud is free to $10,000, and Cloud Standard is 0.5% above that, capped at $999.",
+      a: "Yes. Qonversion is free to $7K a month, then 0.8% of all tracked revenue: $400 at $50,000. RevenueCat is free to $2,500, then 1% of all tracked revenue: $500 at $50,000. RevenueDot Cloud is free until your app makes $10,000 a month, then charges 0.5% above that, capped at $999.",
     },
     {
       q: "Is Qonversion open source?",
@@ -798,7 +792,7 @@ const VS_SUPERWALL: ComparePage = {
   title: "RevenueDot vs Superwall: a purchase backend with paywalls vs a paywall platform",
   metaTitle: "RevenueDot vs Superwall: Price, Paywalls, Open Source",
   metaDescription: "RevenueDot vs Superwall compared: free infrastructure vs paywall fees, stores, paywall editor and A/B tests. Sourced and checked October 2026.",
-  card: "Superwall bills only on paywall revenue. RevenueDot is open source and free on Cloud to $10K.",
+  card: "Superwall bills only on paywall revenue. RevenueDot is open source and free until $10K a month.",
   answer:
     "Superwall is a paywall platform whose subscription infrastructure is free, and it bills 1% only on revenue that flows through its own paywalls, once that passes $10K a month. RevenueDot is a full open-source backend with paywalls included, for apps that use the RevenueCat SDK. Choose Superwall for paywall experiments and web checkout. Choose RevenueDot to keep the RevenueCat SDK and cap your bill at $999 a month.",
   choose: [
@@ -849,12 +843,11 @@ const VS_SUPERWALL: ComparePage = {
     {
       topic: "Price",
       cells: [
-        "Cloud free to $10K a month; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
         "Infrastructure free. Paywalls free up to $10K of paywall-attributed revenue a month, then 1% of all of it; Startup adds $49 a month and Scale $199",
       ],
       sources: [SW_PRICING, SW_FAQ, SW_BLOG],
-      evidence: [E.swIndie, E.swMar, E.swBlogIndie, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.swIndie, E.swMar, E.swBlogIndie],
     },
     {
       topic: "What the bill counts",
@@ -922,7 +915,7 @@ const VS_SUPERWALL: ComparePage = {
       RD_RATE,
     [COL_SUPERWALL, COL_CLOUD],
     [SW_PRICING, SW_FAQ],
-    [E.swIndie, E.swAttributed, E.rdPlans],
+    [E.swIndie, E.swAttributed],
   ),
   blocks: [
     {
@@ -982,12 +975,12 @@ const VS_APPHUD: ComparePage = {
   slug: "revenuedot-vs-apphud",
   kind: "vs",
   columns: ["RevenueDot", "Apphud"],
-  title: "RevenueDot vs Apphud: open source and free on Cloud to $10K vs plan-based hosted pricing",
+  title: "RevenueDot vs Apphud: open source and free until $10K a month vs plan-based hosted pricing",
   metaTitle: "RevenueDot vs Apphud: Price, Features, Open Source",
   metaDescription: "RevenueDot vs Apphud compared: Free, Pro and Expert plans against RevenueDot's cap, stores, web funnels and webhooks. Checked October 2026.",
   card: "Flat plans plus per-$1,000 overage, or open source with a cap at $999.",
   answer:
-    "Apphud charges by plan: Free with $10K of tracked revenue, Pro at $49 a month, Expert at $59, each with extra revenue billed at $9.99 or $11.99 per $1,000. RevenueDot Cloud is free to $10K and Cloud Standard is 0.5% above that, capped at $999. Apphud suits small apps that want web funnels and flat plans. RevenueDot suits teams that want open source, a bill capped at $999 a month and the RevenueCat SDK.",
+    "Apphud charges by plan: Free with $10K of tracked revenue, Pro at $49 a month, Expert at $59, each with extra revenue billed at $9.99 or $11.99 per $1,000. RevenueDot Cloud is free until your app makes $10K a month, then Pro charges 0.5% above that, capped at $999. Apphud suits small apps that want web funnels and flat plans. RevenueDot suits teams that want open source, a bill capped at $999 a month and the RevenueCat SDK.",
   choose: [
     {
       name: "RevenueDot",
@@ -1030,12 +1023,11 @@ const VS_APPHUD: ComparePage = {
     {
       topic: "Price",
       cells: [
-        "Cloud free to $10K a month; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
         "Free with $10K of tracked revenue; Pro $49 a month with $5K included, then $9.99 per extra $1,000; Expert $59 with $5K included, then $11.99 per $1,000; Enterprise from $100K",
       ],
       sources: [AP_PRICING],
-      evidence: [E.apPlans, E.apOverage, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.apPlans, E.apOverage],
     },
     {
       topic: "What counts as revenue",
@@ -1043,8 +1035,8 @@ const VS_APPHUD: ComparePage = {
       sources: [AP_PRICING],
     },
     {
-      topic: "Free plan over the limit",
-      cells: ["Cloud Free keeps working; above $10K, Cloud Standard is 0.5% of the revenue above $10K", "After $10K, a 7-day grace period; then purchases are still handled, but renewals are not tracked and dashboard access ends"],
+      topic: "Going past $10K a month",
+      cells: ["Nothing stops; above $10K, Pro charges 0.5% of the revenue above $10K", "After $10K, a 7-day grace period; then purchases are still handled, but renewals are not tracked and dashboard access ends"],
       sources: [AP_PRICING],
       evidence: [E.apGrace],
     },
@@ -1107,7 +1099,7 @@ const VS_APPHUD: ComparePage = {
       RD_RATE,
     [COL_APPHUD, COL_CLOUD],
     [AP_PRICING],
-    [E.apPlans, E.apOverage, E.rdPlans],
+    [E.apPlans, E.apOverage],
   ),
   blocks: [
     {
@@ -1126,7 +1118,7 @@ const VS_APPHUD: ComparePage = {
       h2: "How Apphud's plans change the bill",
       paras: [
         "Apphud mixes a flat fee with a rate per $1,000. Pro at $50,000 a month costs about $499 and Expert about $599, so the rate is near 1% and 1.2% at that size. Some features sit behind the plan: server-to-server webhooks and daily exports need Expert.",
-        "RevenueDot has one feature set. Webhooks, exports and experiments are included on every plan, including Cloud Free.",
+        "RevenueDot has one feature set. Webhooks, exports and experiments are included in Pro, even while it costs $0.",
       ],
     },
     {
@@ -1145,7 +1137,7 @@ const VS_APPHUD: ComparePage = {
     },
     {
       q: "Is Apphud cheaper than RevenueCat?",
-      a: "At small sizes, yes. Apphud's Free plan covers $10K a month, while RevenueCat charges $100 at $10,000. At $50,000, Apphud Pro costs about $499 and RevenueCat $500, so they are close. RevenueDot Cloud is free to $10,000 and plans a $999 cap.",
+      a: "At small sizes, yes. Apphud's Free plan covers $10K a month, while RevenueCat charges $100 at $10,000. At $50,000, Apphud Pro costs about $499 and RevenueCat $500, so they are close. RevenueDot Cloud is free until your app makes $10,000 a month and never costs more than $999.",
     },
     {
       q: "What happens if I go over Apphud's free plan?",
@@ -1194,22 +1186,21 @@ const VERSUS_RC_ADAPTY: ComparePage = {
       name: "RevenueDot",
       reasons: [
         "You want to keep the RevenueCat SDK and read the code that grants access.",
-        "You want a free tier up to $10K a month and a bill capped at $999.",
+        "You want to pay nothing until your app makes $10K a month, and a bill capped at $999.",
         "You accept a young project in return for open source and a bill capped at $999 a month.",
       ],
     },
   ],
   rows: [
     {
-      topic: "Free tier and rate",
+      topic: "Free limit and rate",
       cells: [
         "Free to $2,500 monthly tracked revenue, then 1% of all tracked revenue",
         "Free under $5K a month, then 1% of that month's revenue",
-        "Cloud free to $10K; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
       ],
       sources: [RC_PRICING, RC_STAFF, AD_PRICING],
-      evidence: [E.rcPrice, E.rcStaff, E.adPrice, E.adWhen, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.rcPrice, E.rcStaff, E.adPrice, E.adWhen],
     },
     {
       topic: "What revenue counts",
@@ -1342,7 +1333,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
       " Add-ons and Enterprise plans are not included.",
     [COL_RC, COL_ADAPTY, COL_CLOUD],
     [RC_PRICING, RC_STAFF, AD_PRICING],
-    [E.rcPrice, E.rcStaff, E.adPrice, E.adWhen, E.rdPlans],
+    [E.rcPrice, E.rcStaff, E.adPrice, E.adWhen],
   ),
   blocks: [
     {
@@ -1363,8 +1354,8 @@ const VERSUS_RC_ADAPTY: ComparePage = {
     {
       h2: "Where RevenueDot fits",
       paras: [
-        "RevenueDot is not a third SDK. It is a backend that speaks the RevenueCat SDK's API, so you can leave RevenueCat's servers and keep RevenueCat's SDK. It is open source and free on Cloud up to $10K a month. It is newer than both and has no SOC 2 report yet.",
-        "[Start free on RevenueDot Cloud](" + SIGNUP + ") or read the [migration guide](/migrate-from-revenuecat).",
+        "RevenueDot is not a third SDK. It is a backend that speaks the RevenueCat SDK's API, so you can leave RevenueCat's servers and keep RevenueCat's SDK. It is open source, and RevenueDot Cloud is free until your app makes $10K a month. It is newer than both and has no SOC 2 report yet.",
+        "[Start for free on RevenueDot Cloud](" + SIGNUP + ") or read the [migration guide](/migrate-from-revenuecat).",
       ],
     },
   ],
@@ -1387,7 +1378,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
     },
     {
       q: "Is there an open-source alternative to both?",
-      a: "Yes. RevenueDot is an open-source (AGPL-3.0) backend that implements the RevenueCat SDK's API. It runs on Cloud free to $10,000 a month and lets you keep the RevenueCat SDK. It is newer and has no SOC 2 report yet.",
+      a: "Yes. RevenueDot is an open-source (AGPL-3.0) backend that implements the RevenueCat SDK's API. RevenueDot Cloud is free until your app makes $10,000 a month, and you keep the RevenueCat SDK. It is newer and has no SOC 2 report yet.",
     },
   ],
   checked: CHECKED,
@@ -1445,15 +1436,14 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
       evidence: [E.rcHero, E.swInfra],
     },
     {
-      topic: "Free tier and rate",
+      topic: "Free limit and rate",
       cells: [
         "Free to $2,500 monthly tracked revenue, then 1% of all tracked revenue",
         "Infrastructure free at any scale; paywalls free up to $10K of paywall-attributed revenue, then 1% of all of it",
-        "Cloud free to $10K; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
       ],
       sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
-      evidence: [E.rcPrice, E.rcStaff, E.swIndie, E.swMar, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.rcPrice, E.rcStaff, E.swIndie, E.swMar],
     },
     {
       topic: "What the bill counts",
@@ -1467,7 +1457,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
     },
     {
       topic: "Paid tiers",
-      cells: ["Pro, Growth Tools and Enterprise", "Indie $0, Startup $49 a month, Scale $199 a month, plus 1% of attributed revenue; Enterprise is custom", "Cloud Standard at 0.5% above $10K, capped at $999; Enterprise is custom"],
+      cells: ["Pro, Growth Tools and Enterprise", "Indie $0, Startup $49 a month, Scale $199 a month, plus 1% of attributed revenue; Enterprise is custom", "Pro: free until $10K a month, then 0.5% above that, capped at $999; Enterprise is custom"],
       sources: [RC_PRICING, SW_PRICING],
       evidence: [E.rcGrowth, E.swIndie],
     },
@@ -1561,7 +1551,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
       RD_RATE,
     [COL_RC, COL_SUPERWALL, COL_CLOUD],
     [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
-    [E.rcPrice, E.rcStaff, E.swIndie, E.swAttributed, E.rdPlans],
+    [E.rcPrice, E.rcStaff, E.swIndie, E.swAttributed],
   ),
   blocks: [
     {
@@ -1582,8 +1572,8 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
     {
       h2: "Where RevenueDot fits",
       paras: [
-        "RevenueDot keeps the RevenueCat SDK and replaces the hosted backend with RevenueDot Cloud, free to $10K a month. It includes paywalls, experiments, in-app currencies and charts. It is newer than both and has no SOC 2 report yet.",
-        "[Start free on RevenueDot Cloud](" + SIGNUP + ").",
+        "RevenueDot keeps the RevenueCat SDK and replaces the hosted backend with RevenueDot Cloud, free until your app makes $10K a month. It includes paywalls, experiments, in-app currencies and charts. It is newer than both and has no SOC 2 report yet.",
+        "[Start for free on RevenueDot Cloud](" + SIGNUP + ").",
       ],
     },
   ],
@@ -1606,7 +1596,7 @@ const VERSUS_RC_SUPERWALL: ComparePage = {
     },
     {
       q: "Is there an open-source alternative to RevenueCat and Superwall?",
-      a: "Yes. RevenueDot is an open-source backend (AGPL-3.0) that works with the RevenueCat SDK, has a paywall gallery, editor and AI generator. Its Cloud is free to $10,000 a month. It is newer and has no SOC 2 report yet.",
+      a: "Yes. RevenueDot is an open-source backend (AGPL-3.0) that works with the RevenueCat SDK, has a paywall gallery, editor and AI generator. RevenueDot Cloud is free until your app makes $10,000 a month. It is newer and has no SOC 2 report yet.",
     },
   ],
   checked: CHECKED,
@@ -1647,29 +1637,28 @@ const VERSUS_RC_QONVERSION: ComparePage = {
       name: "RevenueDot",
       reasons: [
         "You want to keep the RevenueCat SDK and read the code that grants access.",
-        "You want a free tier up to $10K a month and a bill capped at $999.",
+        "You want to pay nothing until your app makes $10K a month, and a bill capped at $999.",
         "You accept a young project in return for open source and a bill capped at $999 a month.",
       ],
     },
   ],
   rows: [
     {
-      topic: "Free tier and rate",
+      topic: "Free limit and rate",
       cells: [
         "Free to $2,500 monthly tracked revenue, then 1% of all tracked revenue",
         "Free to $7K a month, then 0.8% of all tracked revenue",
-        "Cloud free to $10K; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
       ],
       sources: [RC_PRICING, RC_STAFF, QO_PRICING],
-      evidence: [E.rcPrice, E.rcStaff, E.qoPrice, E.qoTotal, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.rcPrice, E.rcStaff, E.qoPrice, E.qoTotal],
     },
     {
       topic: "Plans",
       cells: [
         "Pro, Growth Tools and Enterprise",
         "One Pro plan with every feature, unlimited apps and seats; Enterprise for contract terms and an SLA",
-        "Cloud Standard at 0.5% above $10K, capped at $999; Enterprise is custom",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999; Enterprise is custom",
       ],
       sources: [RC_PRICING, QO_PRICING],
       evidence: [E.rcGrowth, E.qoPlan],
@@ -1782,13 +1771,13 @@ const VERSUS_RC_QONVERSION: ComparePage = {
       " Enterprise plans are custom and not shown.",
     [COL_RC, COL_QONVERSION, COL_CLOUD],
     [RC_PRICING, RC_STAFF, QO_PRICING],
-    [E.rcPrice, E.rcStaff, E.qoPrice, E.qoTotal, E.rdPlans],
+    [E.rcPrice, E.rcStaff, E.qoPrice, E.qoTotal],
   ),
   blocks: [
     {
       h2: "What the difference costs you",
       paras: [
-        "Both vendors bill the whole amount once you pass the free limit. At $50,000 a month RevenueCat costs $500 and Qonversion $400. At $1,000,000 a month it is $10,000 against $8,000. RevenueDot Cloud Standard stops at $999.",
+        "Both vendors bill the whole amount once you pass the free limit. At $50,000 a month RevenueCat costs $500 and Qonversion $400. At $1,000,000 a month it is $10,000 against $8,000. RevenueDot Pro stops at $999.",
       ],
     },
     {
@@ -1803,7 +1792,7 @@ const VERSUS_RC_QONVERSION: ComparePage = {
       h2: "Where RevenueDot fits",
       paras: [
         "RevenueDot keeps the RevenueCat SDK, so leaving RevenueCat's servers does not mean a new SDK. It is open source and includes paywalls, experiments and 43 charts. It is newer than both and has no SOC 2 report yet.",
-        "[Start free on RevenueDot Cloud](" + SIGNUP + ") or read the [migration guide](/migrate-from-revenuecat).",
+        "[Start for free on RevenueDot Cloud](" + SIGNUP + ") or read the [migration guide](/migrate-from-revenuecat).",
       ],
     },
   ],
@@ -1826,7 +1815,7 @@ const VERSUS_RC_QONVERSION: ComparePage = {
     },
     {
       q: "Is there an open-source alternative to RevenueCat and Qonversion?",
-      a: "Yes. RevenueDot is an open-source backend (AGPL-3.0) that implements the RevenueCat SDK's API. Its Cloud is free to $10,000 a month, and Cloud Standard is 0.5% above that, capped at $999. It is newer and has no SOC 2 report yet.",
+      a: "Yes. RevenueDot is an open-source backend (AGPL-3.0) that implements the RevenueCat SDK's API. RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% above that, capped at $999. It is newer and has no SOC 2 report yet.",
     },
   ],
   checked: CHECKED,
@@ -1881,7 +1870,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
       reasons: [
         "You want RevenueCat's job done by an open-source server that works with the RevenueCat SDK.",
         "You want web checkout on your own Stripe account to unlock the same entitlement as the stores.",
-        "You want it free up to $10K a month in tracked revenue, then capped at $999 a month.",
+        "You want it free until your app makes $10K a month, then capped at $999 a month.",
       ],
     },
   ],
@@ -1953,11 +1942,10 @@ const VERSUS_RC_STRIPE: ComparePage = {
       cells: [
         "Free to $2,500 monthly tracked revenue, then 1% of all of it. RevenueCat Web adds no RevenueCat fee; Stripe's fees still apply",
         "2.9% + 30¢ per successful US card charge, 1.5% more for international cards, and 0.7% of volume for Stripe Billing",
-        "Cloud free to $10K a month; Standard 0.5% above, capped at $999. Stripe's fees still apply on web sales",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999. Stripe's fees still apply on web sales",
       ],
       sources: [RC_PRICING, RC_WEB, STRIPE_PRICING, STRIPE_BILLING],
-      evidence: [E.rcPrice, E.stCard, E.stIntl, E.stBilling, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.rcPrice, E.stCard, E.stIntl, E.stBilling],
     },
     {
       topic: "Subscription analytics",
@@ -1988,7 +1976,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
     head: ["Monthly revenue", "Store fee (15%)", "RevenueCat", "Stripe (web, $9.99 plans)", "RevenueDot Cloud"],
     rows: LEVELS.map((m) => [usd(m), usd(m * 0.15), usd(rcBill(m)), usd(stripeFee(m)), usd(cloudBill(m))]),
     sources: [APPLE_SUBS, GOOGLE_FEES, RC_PRICING, STRIPE_PRICING, STRIPE_BILLING],
-    evidence: [E.appleSbp, E.gFees, E.rcPrice, E.stCard, E.stBilling, E.rdPlans],
+    evidence: [E.appleSbp, E.gFees, E.rcPrice, E.stCard, E.stBilling],
   },
   blocks: [
     {
@@ -2037,7 +2025,7 @@ const VERSUS_RC_STRIPE: ComparePage = {
       h2: "Where RevenueDot fits",
       paras: [
         "RevenueDot does RevenueCat's job with an open-source server: App Store, Google Play, Amazon Appstore and Stripe purchases in one customer record, with the RevenueCat SDK in your app. Web checkout runs on your own Stripe account with a restricted key, and [purchase links](/features/purchase-links), [funnels](/features/funnels) and redemption links come included. Connect with Stripe (sign in to Stripe instead of pasting a key) is not available on RevenueDot Cloud yet.",
-        "It is newer than RevenueCat and has no SOC 2 report. [Start free on RevenueDot Cloud](" + SIGNUP + ") or read about [web checkout](/features/web-billing).",
+        "It is newer than RevenueCat and has no SOC 2 report. [Start for free on RevenueDot Cloud](" + SIGNUP + ") or read about [web checkout](/features/web-billing).",
       ],
     },
   ],
@@ -2084,7 +2072,7 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
     "RevenueCat vs Superwall vs RevenueDot: what each costs at $10K, $100K and $1M a month, stores, paywalls, SOC 2 and open source, with a source for every claim.",
   card: "All three in one table: 1% of all revenue, 1% of paywall revenue, or 0.5% capped at $999.",
   answer:
-    "All three run entitlements and purchases for the App Store and Google Play; they differ on price and where they run. RevenueCat charges 1% of all tracked revenue from $2,500 a month and has SOC 2 and the longest record. Superwall's infrastructure is free and it bills 1% only on revenue from its own paywalls above $10K. RevenueDot is open source, keeps the RevenueCat SDK, is free on Cloud to $10K with a $999 cap.",
+    "All three run entitlements and purchases for the App Store and Google Play; they differ on price and where they run. RevenueCat charges 1% of all tracked revenue from $2,500 a month and has SOC 2 and the longest record. Superwall's infrastructure is free and it bills 1% only on revenue from its own paywalls above $10K. RevenueDot is open source, keeps the RevenueCat SDK, and its Cloud is free until your app makes $10K a month, with a $999 cap.",
   choose: [
     {
       name: "RevenueCat",
@@ -2123,15 +2111,14 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
       evidence: [E.rcHero, E.swInfra],
     },
     {
-      topic: "Free tier and rate",
+      topic: "Free limit and rate",
       cells: [
         "Free to $2,500 monthly tracked revenue, then 1% of all tracked revenue",
         "Infrastructure free at any scale; paywalls free up to $10K of paywall-attributed revenue, then 1% of all of it",
-        "Cloud free to $10K; Standard 0.5% above that, capped at $999",
+        "Pro: free until $10K a month, then 0.5% above that, capped at $999",
       ],
       sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
-      evidence: [E.rcPrice, E.rcStaff, E.swIndie, E.swMar, E.rdPlans],
-      visual: "cloud-billing",
+      evidence: [E.rcPrice, E.rcStaff, E.swIndie, E.swMar],
     },
     {
       topic: "What the bill counts",
@@ -2143,11 +2130,11 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
       topic: "Bill at $100,000 a month",
       cells: [usd(rcBill(100_000)), COL_SUPERWALL.cell(100_000) + ", depending on how much converts through its paywalls", usd(cloudBill(100_000)) + " on Cloud"],
       sources: [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
-      evidence: [E.rcStaff, E.swMar, E.rdPlans],
+      evidence: [E.rcStaff, E.swMar],
     },
     {
       topic: "Paid tiers",
-      cells: ["Pro, Growth Tools and Enterprise", "Indie $0, Startup $49 a month, Scale $199 a month, plus 1% of attributed revenue; Enterprise is custom", "Cloud Standard at 0.5% above $10K, capped at $999; Enterprise is custom"],
+      cells: ["Pro, Growth Tools and Enterprise", "Indie $0, Startup $49 a month, Scale $199 a month, plus 1% of attributed revenue; Enterprise is custom", "Pro: free until $10K a month, then 0.5% above that, capped at $999; Enterprise is custom"],
       sources: [RC_PRICING, SW_PRICING],
       evidence: [E.rcGrowth, E.swIndie],
     },
@@ -2258,7 +2245,7 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
       " Enterprise plans are custom and not shown.",
     [COL_RC, COL_SUPERWALL, COL_CLOUD],
     [RC_PRICING, RC_STAFF, SW_PRICING, SW_FAQ],
-    [E.rcPrice, E.rcStaff, E.swIndie, E.swAttributed, E.rdPlans],
+    [E.rcPrice, E.rcStaff, E.swIndie, E.swAttributed],
     THREE_LEVELS,
   ),
   blocks: [
@@ -2290,11 +2277,11 @@ const THREE_WAY_RC_SUPERWALL: ComparePage = {
   faq: [
     {
       q: "Which is cheapest: RevenueCat, Superwall or RevenueDot?",
-      a: "RevenueDot Cloud for most apps. It is free to $10,000 a month and never more than $999: $450 at $100,000 and $999 at $1,000,000. RevenueCat costs $1,000 and $10,000 at those levels. Superwall costs between $0 and the same as RevenueCat, depending on how much revenue converts through its paywalls.",
+      a: "RevenueDot Cloud for most apps. It is free until your app makes $10,000 a month and never costs more than $999: $450 at $100,000 and $999 at $1,000,000. RevenueCat costs $1,000 and $10,000 at those levels. Superwall costs between $0 and the same as RevenueCat, depending on how much revenue converts through its paywalls.",
     },
     {
       q: "What is RevenueDot?",
-      a: "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. You point the SDK at RevenueDot Cloud, free up to $10,000 a month in tracked revenue, and you get entitlements, paywalls, experiments, charts and web checkout. The code is on GitHub at github.com/revenuedot/revenuedot.",
+      a: "RevenueDot is an open-source backend for in-app purchases and subscriptions that works with the RevenueCat SDK. You point the SDK at RevenueDot Cloud, free until your app makes $10,000 a month, and you get entitlements, paywalls, experiments, charts and web checkout. The code is on GitHub at github.com/revenuedot/revenuedot.",
     },
     {
       q: "Is RevenueDot a typo for RevenueCat?",
@@ -2324,7 +2311,7 @@ export const CHEAPER_FEES = priceTable(
   "",
   [COL_RC, COL_ADAPTY, COL_QONVERSION, COL_SUPERWALL, COL_APPHUD, COL_CLOUD],
   [RC_PRICING, RC_STAFF, AD_PRICING, QO_PRICING, SW_PRICING, SW_FAQ, AP_PRICING],
-  [E.rcPrice, E.rcStaff, E.adPrice, E.qoPrice, E.qoTotal, E.swIndie, E.swAttributed, E.apPlans, E.apOverage, E.rdPlans],
+  [E.rcPrice, E.rcStaff, E.adPrice, E.qoPrice, E.qoTotal, E.swIndie, E.swAttributed, E.apPlans, E.apOverage],
   THREE_LEVELS,
 );
 
@@ -2351,14 +2338,14 @@ export const ALTERNATIVE_PAGE: {
   blocks: Block[];
   faq: Faq[];
 } = {
-  title: "The open-source RevenueCat alternative, free on Cloud to $10K",
+  title: "The open-source RevenueCat alternative, free until $10K a month",
   metaTitle: "RevenueCat Alternative: Open Source, Free on Cloud",
-  metaDescription: "The open-source RevenueCat alternative: RevenueDot works with the RevenueCat SDK and is free on Cloud to $10K a month. Sourced.",
+  metaDescription: "The open-source RevenueCat alternative: RevenueDot works with the RevenueCat SDK and is free until your app makes $10K a month. Every claim sourced.",
   answer:
-    "The best open-source RevenueCat alternative is RevenueDot. It is an AGPL-3.0 backend that the stock RevenueCat SDKs already talk to, so you change one URL and keep your app code. Start free on RevenueDot Cloud: free up to $10K a month in tracked revenue, then 0.5%, never more than $999 a month. It has no SOC 2 report and no years of live traffic yet. For a hosted option with a different SDK, look at Adapty, Qonversion or Superwall.",
+    "The best open-source RevenueCat alternative is RevenueDot. It is an AGPL-3.0 backend that the stock RevenueCat SDKs already talk to, so you change one URL and keep your app code. RevenueDot Cloud is free until your app makes $10K a month, then 0.5% of revenue above that, never more than $999 a month. It has no SOC 2 report and no years of live traffic yet. For a hosted option with a different SDK, look at Adapty, Qonversion or Superwall.",
   points: [
     { title: "Keep the RevenueCat SDK", text: "Set one proxy URL. Offerings, purchases, restores and CustomerInfo code stays as it is, and so do your webhooks and REST calls." },
-    { title: "Free on Cloud up to $10K a month", text: "RevenueCat charges 1% of all tracked revenue from $2,500. RevenueDot Cloud is free to $10K, with a cap of $999 a month above that." },
+    { title: "Free until $10K a month", text: "RevenueCat charges 1% of all tracked revenue from $2,500. RevenueDot Cloud is free until your app makes $10K a month, with a cap of $999 a month above that." },
     { title: "Open source, AGPL-3.0", text: "Read the server and dashboard code on GitHub. The SDK forks, CLI and MCP server are MIT." },
     { title: "The features you pay RevenueCat for", text: "43 charts, paywalls with a visual editor, experiments, web checkout, 36 integrations, Refund Control and win-back, in one dashboard." },
   ],
@@ -2410,11 +2397,11 @@ Purchases.configure(withAPIKey: "appl_...")`,
   faq: [
     {
       q: "What is the best open-source alternative to RevenueCat?",
-      a: "RevenueDot. Its server and dashboard are AGPL-3.0, its SDK forks are MIT, and it works with the stock RevenueCat SDKs, so you keep your app code. It runs on RevenueDot Cloud, free up to $10,000 a month in tracked revenue. It is newer than RevenueCat and has no SOC 2 report yet.",
+      a: "RevenueDot. Its server and dashboard are AGPL-3.0, its SDK forks are MIT, and it works with the stock RevenueCat SDKs, so you keep your app code. It runs on RevenueDot Cloud, free until your app makes $10,000 a month. It is newer than RevenueCat and has no SOC 2 report yet.",
     },
     {
       q: "Is there a free RevenueCat alternative?",
-      a: "Yes. RevenueDot Cloud is free up to $10,000 of monthly tracked revenue, then 0.5% of the revenue above that, never more than $999 a month. Superwall also offers free subscription infrastructure and bills 1% only on revenue from its own paywalls above $10K a month.",
+      a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of the revenue above that, never more than $999 a month. Superwall also offers free subscription infrastructure and bills 1% only on revenue from its own paywalls above $10K a month.",
     },
     {
       q: "Do I have to change my app to leave RevenueCat?",
