@@ -11,7 +11,9 @@ import { esc, type Rendered } from "./templates.js";
 const INK = "#0A0A0A", FG2 = "#4A4A4A", FG3 = "#737373", BORDER = "#E5E5E5", PANEL = "#F7F7F7", GOLD = "#F7B500", UP = "#587A27", DOWN = "#C2410C";
 const FONT = "Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-const LOGO_URL = "https://revenuedot.app/brand/revenuedot-lockup-black%402x.png";
+// The lockup with a white hairline (apps/site/public/email/brand): invisible on white, and it keeps the logo readable when
+// Gmail and Outlook apps darken an email, because they darken the page but leave images alone. 342 x 54 px, shown at half size.
+const LOGO_URL = "https://revenuedot.app/email/brand/revenuedot-lockup-email.png";
 export const SITE = "https://revenuedot.app";
 
 /** The sender. The Cloud binding must allow this address (cloudflare.config.ts); replies reach the team's inbox. */
@@ -499,10 +501,10 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
     // A plain note from the team: no banner, paragraphs, a sign-off, the logo small at the bottom.
     html = head + m.blocks.map(block).join("") +
       `<tr><td style="padding:0 0 26px;"><p style="margin:0;font-size:16px;line-height:26px;color:${FG2};">The RevenueDot team</p></td></tr>` +
-      `<tr><td style="padding:0 0 18px;"><img src="${LOGO_URL}" width="104" height="15" alt="RevenueDot" style="display:block;border:0;outline:none;font-family:${FONT};font-size:13px;font-weight:700;color:${INK};"></td></tr>` + foot;
+      `<tr><td style="padding:0 0 18px;"><img src="${LOGO_URL}" width="104" height="16" alt="RevenueDot" style="display:block;border:0;outline:none;font-family:${FONT};font-size:13px;font-weight:700;color:${INK};"></td></tr>` + foot;
   } else {
     html = head +
-      `<tr><td style="padding:0 0 28px;"><a href="${esc(tag(SITE, s))}"><img src="${LOGO_URL}" width="152" height="22" alt="RevenueDot" style="display:block;border:0;outline:none;font-family:${FONT};font-size:15px;font-weight:700;color:${INK};"></a></td></tr>` +
+      `<tr><td style="padding:0 0 28px;"><a href="${esc(tag(SITE, s))}"><img src="${LOGO_URL}" width="152" height="24" alt="RevenueDot" style="display:block;border:0;outline:none;font-family:${FONT};font-size:15px;font-weight:700;color:${INK};"></a></td></tr>` +
       (m.eyebrow ? `<tr><td style="padding:0 0 8px;">${label(m.eyebrow)}</td></tr>` : "") +
       (m.heading ? `<tr><td style="padding:0 0 16px;"><h1 style="margin:0;font-size:28px;line-height:34px;font-weight:700;letter-spacing:-0.03em;color:${INK};">${esc(m.heading)}</h1></td></tr>` : "") +
       m.blocks.map(block).join("") +
