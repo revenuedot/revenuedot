@@ -40,7 +40,8 @@ export interface Facts {
   firstAppAt: number | null; testPurchaseAt: number | null;
   sdkFirstAt: number | null; sdkLastAt: number | null; sdk: { platform: string; version: string } | null;
   storeConnected: boolean; liveAt: number | null; lastSaleAt: number | null;
-  firstSale: { product: string; amount: number | null; currency: string | null; country: string | null } | null;
+  /** The first live sale; `renewal` means the app already had subscribers before RevenueDot saw it. */
+  firstSale: { product: string; amount: number | null; currency: string | null; country: string | null; renewal?: boolean } | null;
   rcImportAt: number | null; importedCustomers: number;
   paywallPublishedAt: number | null; experimentStartedAt: number | null;
   teammates: number; recoveryOn: boolean; assistantConnected: boolean;
@@ -75,23 +76,30 @@ export const STEPS: Step[] = [
   { id: "welcome", onboarding: true, anyHour: true, uncapped: true, freshFor: 2 * D, due: (f) => (f.ownsProjects ? f.createdAt + 5 * 60_000 : null) },
   { id: "teammate_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (!f.ownsProjects && f.memberOf ? f.createdAt + 10 * 60_000 : null) },
   { id: "verify_reminder", onboarding: true, anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.ownsProjects && !f.verified ? f.createdAt + D : null) },
-  // Celebrations and replies to what just happened.
-  { id: "first_sale", anyDay: true, freshFor: 3 * D, due: (f) => f.liveAt },
-  { id: "standard_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
-  // Switching from RevenueCat: the cutover is the most valuable email of all, so it outranks the rest.
-  { id: "cutover", freshFor: 14 * D, due: (f, now) => (migrating(f) && f.liveAt && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
-  { id: "upgrade_nudge", freshFor: 10 * D, due: (f) => (f.plan === "free" && f.free100At !== null ? f.free100At + 3 * D : null) },
+  // Celebrations and receipts answer something that just happened, so they skip the caps.
+  { id: "first_sale", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => f.liveAt },
+  { id: "standard_welcome", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
+  // Switching from RevenueCat: the cutover, once the app update talks to RevenueDot and sales are live.
+  { id: "cutover", freshFor: 14 * D, due: (f, now) => (migrating(f) && f.liveAt && f.sdkFirstAt && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? Math.max(f.liveAt, f.sdkFirstAt) + 7 * D : null) },
   { id: "side_by_side", onboarding: true, freshFor: 7 * D, due: (f) => (f.rcImportAt && !f.liveAt ? f.rcImportAt + D : null) },
-  // Onboarding, by the next missing step.
+  // Building an app (or already selling with your own code): the next missing step.
   { id: "store_keys", onboarding: true, freshFor: 10 * D, due: (f) => (f.sdkFirstAt && !f.storeConnected && !f.liveAt ? f.sdkFirstAt + D : null) },
   { id: "connect_app", onboarding: true, freshFor: 10 * D,
-    due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
-  // Building an app: the store is connected, but there is no paywall and no sale yet.
+    due: (f) => (!migrating(f) && !f.sdkFirstAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
   { id: "paywall", onboarding: true, freshFor: 10 * D,
     due: (f) => (!migrating(f) && f.sdkFirstAt && f.storeConnected && !f.paywallPublishedAt && !f.liveAt ? Math.max(f.sdkFirstAt + 3 * D, f.createdAt + 3 * D, (f.sent.get("store_keys") ?? 0) + 2 * D) : null) },
-  // One email to anyone stuck, matched to their step: switchers who never imported (day 3), builders whose app never connected (day 5).
-  { id: "need_hand", onboarding: true, freshFor: 6 * D,
-    due: (f) => (f.liveAt || f.sdkFirstAt ? null : migrating(f) ? (f.rcImportAt ? null : f.createdAt + 3 * D) : f.createdAt + 5 * D) },
+  // One email to anyone stuck, at the first step where they stall: no SDK call (day 5), no store five days after the store
+  // email; for switchers, no import (day 3), or no store notifications five days after the side-by-side email.
+  { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => {
+    if (f.liveAt) return null;
+    if (migrating(f)) {
+      if (!f.rcImportAt) return f.createdAt + 3 * D;
+      const forwarding = f.lastNotificationAt !== null && f.lastNotificationAt >= f.rcImportAt;
+      return forwarding ? null : (f.sent.get("side_by_side") ?? f.rcImportAt + D) + 5 * D;
+    }
+    if (!f.sdkFirstAt) return f.createdAt + 5 * D;
+    return f.storeConnected ? null : (f.sent.get("store_keys") ?? f.sdkFirstAt + D) + 5 * D;
+  } },
 ];
 
 /** Hour (0–23) and weekday (0 = Sunday) in a time zone; an unknown zone falls back to the default. */
@@ -159,7 +167,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT t.created_at FROM transactions t WHERE t.project_id = o.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0 AND t.kind IN ('purchase','renewal','one_time')
           AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at DESC LIMIT 1) AS last_at
       FROM owned o),
-    firsts AS (SELECT pm.uid, t.created_at, t.product_identifier, t.price_amount, t.price_currency, t.country_code FROM pm JOIN transactions t ON t.id = pm.first_tx)
+    firsts AS (SELECT pm.uid, t.created_at, t.kind, t.product_identifier, t.price_amount, t.price_currency, t.country_code FROM pm JOIN transactions t ON t.id = pm.first_tx)
     SELECT u.id, u.email, u.name, u.created_at, u.email_verified_at, u.time_zone, u.journey_path, u.referral_code, u.product_emails,
       (SELECT count(*) FROM owned o WHERE o.uid = u.id) AS owned,
       -- The project to link to: the oldest one whose app has talked to RevenueDot, else the oldest.
@@ -178,7 +186,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       -- Live: a paid production sale recorded within 2 days of the purchase (imported history is recorded much later).
       (SELECT min(f.created_at) FROM firsts f WHERE f.uid = u.id) AS live_at,
       (SELECT max(pm.last_at) FROM pm WHERE pm.uid = u.id) AS last_sale_at,
-      (SELECT json_build_object('product', f.product_identifier, 'amount', f.price_amount, 'currency', f.price_currency, 'country', f.country_code)
+      (SELECT json_build_object('product', f.product_identifier, 'amount', f.price_amount, 'currency', f.price_currency, 'country', f.country_code, 'renewal', f.kind = 'renewal')
           FROM firsts f WHERE f.uid = u.id ORDER BY f.created_at ASC LIMIT 1) AS first_sale,
       (SELECT min(o.rc_import_at) FROM owned o WHERE o.uid = u.id) AS rc_import_at,
       (SELECT min(pw.published_at) FROM paywalls pw JOIN owned o ON o.id = pw.project_id WHERE o.uid = u.id) AS paywall_published_at,
@@ -206,7 +214,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
   return rows.map((r): Facts => {
     const json = <T>(v: unknown): T | null => (v === null || v === undefined ? null : (typeof v === "string" ? JSON.parse(v) : v) as T);
     const sdk = json<{ platform: string; os: string; version: string }>(r.sdk);
-    const sale = json<{ product: string; amount: number | null; currency: string | null; country: string | null }>(r.first_sale);
+    const sale = json<{ product: string; amount: number | null; currency: string | null; country: string | null; renewal?: boolean }>(r.first_sale);
     const member = json<{ project_id: string; project_name: string; inviter: string | null }>(r.member_of);
     const sent = new Map<StepId, number>(Object.entries(json<Record<string, string>>(r.sent) ?? {}).map(([k, v]) => [k as StepId, new Date(v).getTime()]));
     const paying = r.ba_plan === "standard" && ["active", "past_due"].includes(String(r.ba_status));
@@ -266,7 +274,8 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
     migrating: migrating(f),
     liveSince: f.liveAt ? new Date(f.liveAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : undefined,
     inviter: member ? f.memberOf!.inviter : null,
-    sale: f.firstSale ? { product: f.firstSale.product, amount: money(f.firstSale.amount, f.firstSale.currency), country: COUNTRY(f.firstSale.country) } : null,
+    sale: f.firstSale ? { product: f.firstSale.product, amount: money(f.firstSale.amount, f.firstSale.currency), country: COUNTRY(f.firstSale.country), renewal: f.firstSale.renewal === true } : null,
+    notificationsSeen: f.lastNotificationAt !== null && (f.rcImportAt === null || f.lastNotificationAt >= f.rcImportAt),
   };
   // The cutover compares a whole month at this month's pace; the upgrade emails quote the revenue so far.
   // The cutover prices a month at the last 7 days' pace (always at least 7 days live by then); the upgrade emails price the

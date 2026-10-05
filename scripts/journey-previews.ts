@@ -36,28 +36,31 @@ const maya = (step: StepId): JourneyCtx => ({
   last7: 11_270, projected: Math.round((11_270 * 30) / 7), tracked: 48_300,
 });
 const withBills = (c: JourneyCtx): JourneyCtx => {
-  const basis = c.step === "cutover" ? c.projected! : c.step === "upgrade_nudge" ? c.overTracked! : c.tracked!;
+  const basis = c.step === "cutover" ? c.projected! : c.tracked!;
   return { ...c, bills: { revenuedot: rd(basis), revenuecat: rc(basis) } };
 };
 
 /** Every email in the order a reader meets it, with each variant: [file name, who it goes to]. */
+const at = (c: JourneyCtx, testPurchase: boolean, app: boolean, store: boolean): JourneyCtx => ({ ...c, testPurchase, progress: { testPurchase, app, store, live: false } });
 const VARIANTS: [string, JourneyCtx][] = [
   ["welcome", sam("welcome")],
   ["verify_reminder", sam("verify_reminder")],
-  ["connect_app", sam("connect_app")],
-  ["store_keys", sam("store_keys")],
-  ["paywall", sam("paywall")],
-  ["need_hand-start", { ...sam("need_hand"), testPurchase: false }],
-  ["need_hand-connect", sam("need_hand")],
-  ["first_sale", sam("first_sale")],
-  ["upgrade_nudge", sam("upgrade_nudge")],
+  ["connect_app", at(sam("connect_app"), true, false, false)],
+  ["store_keys", at(sam("store_keys"), true, true, false)],
+  ["paywall", at(sam("paywall"), true, true, true)],
+  ["need_hand-start", at(sam("need_hand"), false, false, false)],
+  ["need_hand-connect", at(sam("need_hand"), true, false, false)],
+  ["need_hand-store", at(sam("need_hand"), true, true, false)],
+  ["first_sale", { ...sam("first_sale"), progress: { testPurchase: true, app: true, store: true, live: true } }],
+  ["first_sale-existing", { ...sam("first_sale"), projectName: "Pocket Yoga", sale: { product: "yoga_annual", amount: "$59.99", country: "United States", renewal: true }, progress: { testPurchase: false, app: false, store: true, live: true } }],
   ["standard_welcome", sam("standard_welcome")],
-  ["teammate_welcome", { ...sam("teammate_welcome"), first: "Jordan" }],
-  ["need_hand-switch", maya("need_hand")],
+  ["teammate_welcome", { ...sam("teammate_welcome"), first: "Jordan", to: "jordan@notely.app" }],
+  ["need_hand-switch", { ...maya("need_hand"), importedOn: undefined }],
   ["side_by_side", maya("side_by_side")],
-  ["first_sale-switch", maya("first_sale")],
+  ["need_hand-forwarding", maya("need_hand")],
+  ["first_sale-switch", { ...maya("first_sale"), progress: { testPurchase: false, app: false, store: true, live: true } }],
+  ["first_sale-switch-app", { ...maya("first_sale"), progress: { testPurchase: false, app: true, store: true, live: true } }],
   ["cutover", maya("cutover")],
-  ["upgrade_nudge-switch", maya("upgrade_nudge")],
 ];
 
 const index: { name: string; step: StepId; subject: string; preheader: string; bytes: number }[] = [];

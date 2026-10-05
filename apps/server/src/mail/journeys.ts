@@ -11,7 +11,7 @@ import { esc, type Rendered } from "./templates.js";
 const INK = "#0A0A0A", FG2 = "#4A4A4A", FG3 = "#737373", BORDER = "#E5E5E5", PANEL = "#F7F7F7", GOLD = "#F7B500", UP = "#587A27", DOWN = "#C2410C";
 const FONT = "Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-const LOGO_URL = "https://revenuedot.app/brand/revenuedot-lockup-black@2x.png";
+const LOGO_URL = "https://revenuedot.app/brand/revenuedot-lockup-black%402x.png";
 export const SITE = "https://revenuedot.app";
 
 /** The sender. The Cloud binding must allow this address (cloudflare.config.ts); replies reach the team's inbox. */
@@ -52,7 +52,7 @@ const artUrl = (a: Art) => `${SITE}/email/art/${a}.jpg`;
 
 export type StepId =
   | "welcome" | "verify_reminder" | "connect_app" | "store_keys" | "paywall" | "need_hand" | "side_by_side" | "cutover"
-  | "first_sale" | "standard_welcome" | "upgrade_nudge" | "teammate_welcome";
+  | "first_sale" | "standard_welcome" | "teammate_welcome";
 
 /** What a step's copy may use. Everything optional is filled only for the steps that need it. */
 export interface JourneyCtx {
@@ -72,7 +72,9 @@ export interface JourneyCtx {
   progress?: { testPurchase: boolean; app: boolean; store: boolean; live: boolean };
   testPurchase?: boolean;
   sdk?: { platform: string; version: string } | null;
-  sale?: { product: string; amount: string | null; country: string | null } | null;
+  sale?: { product: string; amount: string | null; country: string | null; renewal?: boolean } | null;
+  /** Store notifications have reached RevenueDot (since the RevenueCat import, for switchers). */
+  notificationsSeen?: boolean;
   importedCustomers?: number | null;
   /** This month's tracked revenue (USD) and its name ("October"). */
   tracked?: number;
@@ -180,13 +182,13 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { t: "lead", text: "RevenueDot runs your app's in-app purchases and subscriptions on the App Store, Google Play and the web. It checks every purchase with the store, unlocks paid features in your app and shows you the revenue." },
       { t: "picture", video: "first-purchase", shot: "checklist", caption: "A first purchase, from an empty project to a paying test customer." },
       { t: "p", text: "Start with a test purchase from the dashboard. It needs no App Store or Google Play account, and Cloud is free until your apps make $10,000 a month." },
-      { t: "button", label: "Make your first test purchase", url: c.pathUrl?.("new") ?? docs("getting-started/quickstart"), secondary: { label: "Switching from RevenueCat? Start here", url: c.pathUrl?.("revenuecat") ?? docs("migrate") } },
+      { t: "button", label: "Make your first test purchase", url: dash(c, "/overview"), secondary: { label: "Switching from RevenueCat? Start here", url: c.pathUrl?.("revenuecat") ?? docs("migrate") } },
     ],
   }),
 
   verify_reminder: (c) => ({
     look: "rich",
-    subject: "Confirm your email to create API keys",
+    subject: "Confirm your email to create secret API keys",
     preheader: "A fresh link that works for 24 hours.",
     heading: "Confirm your email",
     blocks: [
@@ -195,7 +197,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     ],
   }),
 
-  // Building a new app: a test purchase or an app exists, but no app has called RevenueDot yet.
+  // Building an app, or already selling with your own code: no app has called RevenueDot yet.
   connect_app: (c) => ({
     look: "rich",
     subject: c.testPurchase ? "Your test purchase worked. Next, add RevenueDot to your app" : "Add RevenueDot to your app",
@@ -213,25 +215,25 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     ],
   }),
 
-  // Any case: the app has talked to RevenueDot, but no store is connected.
+  // Any case: an app has called RevenueDot, but no store is connected.
   store_keys: (c) => ({
     look: "rich",
-    subject: "Your app reached RevenueDot. Next, connect your store",
+    subject: "Your app is connected. Next, connect your store",
     preheader: "Store credentials let RevenueDot check every purchase and hear about renewals and refunds.",
-    heading: "Your app reached RevenueDot",
+    heading: "Your app is connected",
     blocks: [
-      { t: "lead", text: `${c.sdk ? `Your ${c.sdk.platform} app` : "Your app"} just talked to RevenueDot for the first time. Next, connect your store, so RevenueDot can check every purchase and hear about renewals and refunds even when nobody opens the app.` },
+      { t: "lead", text: `${c.sdk ? `Your ${c.sdk.platform} app` : "Your app"} is talking to RevenueDot. Next, connect your store, so RevenueDot can check every purchase and hear about renewals and refunds even when nobody opens the app.` },
       { t: "picture", shot: "app-store", href: dash(c, "/apps"), caption: "Each app's page shows what is still missing." },
       { t: "list", items: [
-        `**App Store:** add an In-App Purchase key. The [App Store guide](${docs("guides/app-store")}) shows where to find it.`,
-        `**Google Play:** add a service account and turn on notifications. The [Google Play guide](${docs("guides/google-play")}) covers both.`,
-        `**Products already in the store?** [Import them](${docs("guides/import-products")}) in one click instead of typing them again.`,
+        `**App Store:** add an In-App Purchase key, then paste RevenueDot's notification URL into App Store Connect. The [App Store guide](${docs("guides/app-store")}) shows both.`,
+        `**Google Play:** add a service account and turn on real-time notifications. The [Google Play guide](${docs("guides/google-play")}) covers both.`,
+        `**Products already in the store?** [Import them](${docs("guides/import-products")}) instead of typing them again.`,
       ] },
       { t: "button", label: "Connect my store", url: dash(c, "/apps") },
     ],
   }),
 
-  // Building a new app: store connected, no paywall yet, no sale yet.
+  // Building an app: store connected, no paywall yet, no sale yet.
   paywall: (c) => ({
     look: "rich",
     subject: "Add a paywall that sells",
@@ -239,97 +241,98 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     heading: "Add a paywall that sells",
     blocks: [
       { t: "lead", text: "Your store is connected. The paywall is the screen where people choose a plan and pay, so it decides how much your app earns." },
-      { t: "picture", shot: "paywall-templates", href: dash(c, "/paywalls/templates"), caption: "Paywall templates you can edit in the dashboard." },
+      { t: "picture", video: "paywalls-and-experiments", shot: "paywall-templates", href: dash(c, "/paywalls/templates") },
       { t: "list", items: [
         "**Start from a template** and change the words, plans and colors in the dashboard.",
-        "**Add the paywall view to your app once.** After that, changes reach your app without a new release.",
-        `**Offer a free trial or a yearly plan** if they suit your app. The [paywall guide](${docs("guides/paywalls")}) shows how to set up each one.`,
+        "**Add the paywall view from the RevenueDot SDK to your app once.** After that, your changes reach the app without a new release.",
+        `**Want the details?** The [paywall guide](${docs("guides/paywalls")}) walks through it.`,
       ] },
       { t: "button", label: "Pick a paywall template", url: dash(c, "/paywalls/templates") },
     ],
   }),
 
-  // One email to anyone stuck, matched to the step they are stuck on.
+  // One email to anyone stuck, written for the step they stalled on.
   need_hand: (c) => {
-    const stuck = (heading: string, lead: string, shot: Shot, href: string, label: string, url: string): JourneyMail => ({
-      look: "rich", subject: heading, preheader: "Your project is ready. The next step takes a few minutes.", heading,
-      blocks: [
-        { t: "lead", text: lead },
-        { t: "picture", shot, href },
-        { t: "button", label, url, secondary: { label: "Stuck? Reply and an engineer will answer", url: mailto("Stuck on my setup") } },
-      ],
+    const p = c.progress ?? { testPurchase: !!c.testPurchase, app: false, store: false, live: false };
+    const stuck = (subject: string, lead: string, picture: Block, label: string, url: string): JourneyMail => ({
+      look: "rich", subject, preheader: "The next step takes a few minutes.", heading: subject,
+      blocks: [{ t: "lead", text: lead }, picture, { t: "button", label, url }],
     });
-    if (c.migrating) return stuck("Bring your RevenueCat project over",
+    if (c.migrating && !c.importedOn) return stuck("Bring your RevenueCat project over",
       `One command copies your apps, products, offerings, customers and purchase history into ${proj(c)}. Running it twice changes nothing, and RevenueCat keeps working while you check the result.`,
-      "customers", dash(c, "/customers"), "Open the import guide", docs("migrate/importer"));
-    if (c.testPurchase) return stuck("Your app is one step away",
-      `${proj(c)} works, and your test purchase went through. The last step before real customers is adding the RevenueDot SDK to your app, which takes a few minutes.`,
-      "api-keys", dash(c, "/api-keys"), "Add RevenueDot to my app", docs("getting-started/connect-your-app"));
-    return stuck("Pick up where you left off",
-      `${proj(c)} is ready. The quickest way to see how RevenueDot works is a test purchase from the dashboard. It needs no App Store or Google Play account.`,
-      "checklist", dash(c, "/overview"), "Make a test purchase", dash(c, "/overview"));
+      { t: "picture", video: "switch-from-revenuecat", shot: "customers" }, "Open the import guide", docs("migrate/importer"));
+    if (c.migrating) return stuck("RevenueDot isn't hearing from your stores yet",
+      `Your RevenueCat data is in ${proj(c)}, but no store notifications have reached RevenueDot since the import. Forward them to RevenueCat first, then point the stores at RevenueDot, so neither side misses a renewal.`,
+      { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." }, "Open the side-by-side guide", docs("migrate/dual-run"));
+    if (p.app) return stuck("Connect your store to start selling",
+      "Your app talks to RevenueDot, but no store is connected yet, so RevenueDot can't check real purchases. Each app's page in the dashboard lists exactly what is missing, and the store guides walk through every field.",
+      { t: "picture", shot: "app-store", href: dash(c, "/apps") }, "Connect my store", dash(c, "/apps"));
+    if (p.testPurchase) return stuck("Start from a working example app",
+      `Your app hasn't connected to ${proj(c)} yet. Our example apps for iOS, Android, Flutter and React Native already sell a subscription through RevenueDot, so you can copy what they do or start from one.`,
+      { t: "picture", shot: "api-keys", href: dash(c, "/api-keys"), caption: "You need one of these keys in your app." }, "See the example apps", "https://github.com/revenuedot/examples/tree/main/mobile");
+    return stuck("Your first test purchase takes five minutes",
+      `${proj(c)} is ready. A test purchase from the dashboard shows how RevenueDot works from start to finish, and it needs no App Store or Google Play account.`,
+      { t: "picture", shot: "checklist", href: dash(c, "/overview"), caption: "Your setup checklist on the Overview." }, "Make a test purchase", dash(c, "/overview"));
   },
 
   // Switching from RevenueCat: the import is done.
   side_by_side: (c) => ({
     look: "rich",
     subject: "Your RevenueCat data is in. Next, run both side by side",
-    preheader: "Forward store notifications to RevenueCat first.",
+    preheader: "Forward store notifications to RevenueCat first, so neither side misses a renewal.",
     heading: "Your RevenueCat data is in",
     blocks: [
       ...(c.importedCustomers ? [{ t: "stat", value: c.importedCustomers.toLocaleString("en-US"), label: `customers imported into ${proj(c)}, with their purchase history` } as Block] : []),
-      { t: "lead", text: "Next, run RevenueCat and RevenueDot side by side so both see every renewal. Your production app keeps talking to RevenueCat until you're ready. Do these in order:" },
-      { t: "ol", items: ["Forward store notifications to RevenueCat.", "Point the stores at RevenueDot.", "Compare both sides for a week with `npx revenuedot import verify`."] },
+      { t: "lead", text: "Next, run RevenueCat and RevenueDot side by side so both see every renewal. Your app keeps talking to RevenueCat until you ship the update. Do these in order:" },
+      { t: "ol", items: ["Add each app's store credentials in RevenueDot.", "Forward store notifications to RevenueCat.", "Point the stores at RevenueDot.", "Compare both sides for a week. The guide shows how."] },
       { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." },
       { t: "button", label: "Open the side-by-side guide", url: docs("migrate/dual-run") },
     ],
   }),
 
-  // Switching from RevenueCat: a week of live sales.
-  cutover: (c) => ({
-    look: "rich",
-    subject: c.bills && c.bills.revenuecat > c.bills.revenuedot ? `Ready to turn RevenueCat off? You'd save ${usd((c.bills.revenuecat - c.bills.revenuedot) * 12)} a year` : "Ready to turn RevenueCat off?",
-    preheader: c.bills ? `At your last 7 days' pace: ${usd(c.bills.revenuedot)} a month on RevenueDot, ${usd(c.bills.revenuecat)} on RevenueCat.` : "Your cutover checklist.",
-    heading: "A week of live sales on RevenueDot",
-    blocks: [
-      ...(c.bills && c.bills.revenuecat > c.bills.revenuedot ? [{ t: "stat", value: usd((c.bills.revenuecat - c.bills.revenuedot) * 12), label: `a year saved: ${usd(c.bills.revenuedot)} a month on RevenueDot against ${usd(c.bills.revenuecat)} on RevenueCat, at your last 7 days' pace`, tone: "up" } as Block] : []),
-      { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. Turn RevenueCat off when all three are true:` },
-      { t: "checklist", items: [{ title: "The numbers match", text: "`npx revenuedot import verify` shows no differences." }, { title: "Most users have updated", text: "Older app versions still talk to RevenueCat." }, { title: "Webhooks move together", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." }] },
-      { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
-    ],
-  }),
+  // Switching from RevenueCat: the app update talks to RevenueDot, and live sales have run for a week.
+  cutover: (c) => {
+    const rdM = Math.round(c.bills?.revenuedot ?? 0), rcM = Math.round(c.bills?.revenuecat ?? 0), save = (rcM - rdM) * 12;
+    return {
+      look: "rich",
+      subject: c.bills && save > 0 ? `Ready to turn RevenueCat off? You could save ${usd(save)} a year` : "Ready to turn RevenueCat off?",
+      preheader: c.bills ? `At your last 7 days' pace: ${usd(rdM)} a month on RevenueDot, ${usd(rcM)} at RevenueCat's list price.` : "Your cutover checklist.",
+      heading: "A week of live sales on RevenueDot",
+      blocks: [
+        ...(c.bills && save > 0 ? [{ t: "stat", value: usd(save), label: `a year less: ${usd(rdM)} a month on RevenueDot against ${usd(rcM)} at RevenueCat's list price, at your last 7 days' pace`, tone: "up" } as Block] : []),
+        { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week, and your app update is talking to RevenueDot. Turn RevenueCat off when all three are true:` },
+        { t: "checklist", items: [{ title: "The numbers match", text: "The comparison in the cutover checklist shows no differences." }, { title: "Most users have updated", text: "Older app versions still talk to RevenueCat." }, { title: "Webhooks move together", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." }] },
+        { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
+      ],
+    };
+  },
 
+  // The first live sale. Three cases: a brand-new app, an app that already sold before RevenueDot, and a switch.
   first_sale: (c) => {
-    const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)}: first sale`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
-    return c.migrating ? {
-      look: "rich",
-      subject: `RevenueDot just saw ${proj(c)}'s first live sale`,
-      preheader: "Store notifications are reaching RevenueDot.",
-      heading: "Your first live sale is in",
-      blocks: [...rows, { t: "lead", text: "RevenueDot now sees real sales alongside RevenueCat. Let both run for a few days, then compare them." },
-        { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }],
-    } : {
-      look: "rich",
-      subject: "You just made your first real sale",
-      preheader: c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}${c.sale.country ? ` from ${c.sale.country}` : ""}.` : "Your first real purchase came through RevenueDot.",
-      heading: "Your first real sale",
-      blocks: [...rows, { t: "lead", text: `Congratulations. A real customer just paid for what you built, and ${proj(c)} is live.` },
+    const rows: Block[] = c.sale ? [{ t: "receipt", title: `${proj(c)}: first sale on RevenueDot`, rows: [["Product", c.sale.product], ...(c.sale.amount ? [["Amount", c.sale.amount] as [string, string]] : []), ...(c.sale.country ? [["Customer in", c.sale.country] as [string, string]] : [])] }] : [];
+    const preheader = c.sale ? `${c.sale.product}${c.sale.amount ? ` for ${c.sale.amount}` : ""}${c.sale.country ? ` from ${c.sale.country}` : ""}.` : "Store notifications are reaching RevenueDot.";
+    const app = !!c.progress?.app;
+    if (c.migrating) return {
+      look: "rich", subject: `RevenueDot recorded its first ${proj(c)} sale`, preheader, heading: "Sales are reaching RevenueDot",
+      blocks: [...rows, { t: "lead", text: app
+        ? "RevenueDot now records sales alongside RevenueCat, and your app update is talking to it. Let both run for a few days, then compare them."
+        : "Store notifications reach RevenueDot, so it records sales alongside RevenueCat. Next, ship the app update that points your app at RevenueDot. Older versions keep using RevenueCat until you turn it off." },
+        app ? { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }
+          : { t: "button", label: "Plan the app update", url: docs("migrate/sdk-changes") }],
+    };
+    if (c.sale?.renewal) return {
+      look: "rich", subject: `RevenueDot recorded its first ${proj(c)} sale`, preheader, heading: "Sales are reaching RevenueDot",
+      blocks: [...rows, { t: "lead", text: `Your store is sending purchases and renewals to RevenueDot, so revenue, subscribers and webhooks are live for ${proj(c)}.` },
+        { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Revenue, subscribers and trials update as sales come in." },
+        { t: "button", label: "See it on your dashboard", url: dash(c, "/overview"), ...(app ? {} : { secondary: { label: "Next: add RevenueDot to your app", url: docs("getting-started/connect-your-app") } }) }],
+    };
+    return {
+      look: "rich", subject: "You made your first real sale", preheader, heading: "Your first real sale",
+      blocks: [...rows, { t: "lead", text: `Congratulations. A real customer paid for what you built, and ${proj(c)} is live.` },
         { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Revenue, subscribers and trials update as sales come in." },
         { t: "button", label: "See it on your dashboard", url: dash(c, "/overview") }],
     };
   },
-
-  upgrade_nudge: (c) => ({
-    look: "rich",
-    subject: "Your apps outgrew Cloud Free",
-    preheader: c.bills ? `On ${usd(c.overTracked ?? 0)} a month, Standard costs ${usd(c.bills.revenuedot)}.` : "0.5% above $10,000, capped at $999 a month.",
-    heading: "Your apps outgrew Cloud Free",
-    blocks: [
-      { t: "stat", value: usd(c.overTracked ?? 0), label: `tracked in ${c.overMonth ?? "a month"}, past Cloud Free's $10,000` },
-      { t: "lead", text: `Congratulations on the growth. Everything keeps working either way. ${c.bills ? `At that level, Cloud Standard costs ${usd(c.bills.revenuedot)} a month${c.migrating ? `, against ${usd(c.bills.revenuecat)} on RevenueCat` : ""}. ` : ""}Standard is 0.5% of revenue above $10,000, never more than $999 a month, and billing starts on the 1st of next month.` },
-      { t: "button", label: "Upgrade to Standard", url: `${c.app}/account/billing` },
-    ],
-  }),
 
   standard_welcome: (c) => ({
     look: "rich",
@@ -523,7 +526,7 @@ export function journeyEmail(c: JourneyCtx): Rendered {
   const safe: JourneyCtx = {
     ...c, first: plain(c.first), projectName: plain(c.projectName), inviter: plain(c.inviter),
     sdk: c.sdk ? { platform: plain(c.sdk.platform) ?? "", version: plain(c.sdk.version) ?? "" } : c.sdk,
-    sale: c.sale ? { product: plain(c.sale.product) ?? "a product", amount: plain(c.sale.amount), country: plain(c.sale.country) } : c.sale,
+    sale: c.sale ? { product: plain(c.sale.product) ?? "a product", amount: plain(c.sale.amount), country: plain(c.sale.country), renewal: c.sale.renewal === true } : c.sale,
   };
   return render(safe, EMAILS[safe.step](safe));
 }
