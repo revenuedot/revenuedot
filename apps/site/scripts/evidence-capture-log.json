@@ -1574,42 +1574,6 @@
     "pageHeight": 37513
   },
   {
-    "vendor": "purchasely",
-    "page": "home",
-    "url": "https://www.purchasely.com/",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.purchasely.com/\nCall log:\n  - navigating to \"https://www.purchasely.com/\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "purchasely",
-    "page": "pricing",
-    "url": "https://www.purchasely.com/pricing",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://www.purchasely.com/pricing\nCall log:\n  - navigating to \"https://www.purchasely.com/pricing\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "purchasely",
-    "page": "docs",
-    "url": "https://docs.purchasely.com/",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://docs.purchasely.com/\nCall log:\n  - navigating to \"https://docs.purchasely.com/\", waiting until \"domcontentloaded\"\n"
-  },
-  {
-    "vendor": "purchasely",
-    "page": "github-purchasely-ios",
-    "url": "https://github.com/Purchasely/Purchasely-iOS",
-    "ok": false,
-    "full": [],
-    "crops": [],
-    "error": "Error: page.goto: net::ERR_INTERNET_DISCONNECTED at https://github.com/Purchasely/Purchasely-iOS\nCall log:\n  - navigating to \"https://github.com/Purchasely/Purchasely-iOS\", waiting until \"domcontentloaded\"\n"
-  },
-  {
     "vendor": "iaphub",
     "page": "home",
     "url": "https://www.iaphub.com/",
@@ -1922,5 +1886,115 @@
     "status": 200,
     "title": "Integrate the Google Play Billing Library into your app  |  Android Developers",
     "pageHeight": 21888
+  },
+  {
+    "vendor": "purchasely",
+    "page": "home",
+    "url": "https://www.purchasely.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png",
+      "home-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 18.09375,
+          "y": 0,
+          "width": 821.828125,
+          "height": 768.609375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Purchasely: the in-app experience solution for mobile apps",
+    "pageHeight": 14267
+  },
+  {
+    "vendor": "purchasely",
+    "page": "pricing",
+    "url": "https://www.purchasely.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png",
+      "pricing-full-3-2026-10-04.png",
+      "pricing-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "no-public-price",
+        "file": "pricing-no-public-price-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 18.09375,
+          "y": 0,
+          "width": 821.828125,
+          "height": 768.609375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Purchasely: the in-app experience solution for mobile apps",
+    "pageHeight": 14267
+  },
+  {
+    "vendor": "purchasely",
+    "page": "docs",
+    "url": "https://docs.purchasely.com/",
+    "ok": true,
+    "full": [
+      "docs-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "docs-home",
+        "file": "docs-docs-home-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 244,
+          "y": 0,
+          "width": 800,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "What's Purchasely?",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "purchasely",
+    "page": "github-purchasely-ios",
+    "url": "https://github.com/Purchasely/Purchasely-iOS",
+    "ok": true,
+    "full": [
+      "github-purchasely-ios-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "about",
+        "file": "github-purchasely-ios-about-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 170,
+          "width": 780,
+          "height": 635
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - Purchasely/Purchasely-iOS: Purchasely iOS SDK · GitHub",
+    "pageHeight": 2336
   }
 ]

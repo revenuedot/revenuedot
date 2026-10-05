@@ -217,7 +217,7 @@ export const PAGES = [
 
   // ---- Apple ----------------------------------------------------------------------------------------------------
   p("apple", "app-review-guidelines", "https://developer.apple.com/app-store/review/guidelines/", {
-    crops: [c("3-1-1-in-app-purchase", "3.1.1 In-App Purchase:", "Apple App Review Guidelines 3.1.1: apps that unlock features or functionality must use in-app purchase.", "Guideline 3.1.1 requires in-app purchase for digital unlocks", { minH: 360, extraBottom: 120 })],
+    crops: [c("3-1-1-in-app-purchase", "3.1.1 In-App Purchase:", "Apple App Review Guidelines 3.1.1: apps that unlock features or functionality must use in-app purchase.", "Guideline 3.1.1 requires in-app purchase for digital unlocks", { minH: 360, minW: 1200, extraBottom: 120 })],
   }),
   p("apple", "subscriptions", "https://developer.apple.com/app-store/subscriptions/", {
     crops: [

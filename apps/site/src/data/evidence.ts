@@ -1056,6 +1056,69 @@ export const EVIDENCE: Evidence[] = [
       },
     ],
   },
+  // ---- Purchasely ----
+  {
+    vendor: "Purchasely",
+    page: "home",
+    url: "https://www.purchasely.com/",
+    captured: DATE,
+    full: asset("purchasely", "home-full-1-2026-10-04.png"),
+    fullParts: [asset("purchasely", "home-full-1-2026-10-04.png"), asset("purchasely", "home-full-2-2026-10-04.png"), asset("purchasely", "home-full-3-2026-10-04.png"), asset("purchasely", "home-full-4-2026-10-04.png")],
+    crops: [
+      {
+        claim: "hero",
+        file: asset("purchasely", "home-hero-2026-10-04.png"),
+        alt: "Purchasely homepage hero: 'Turn app users into subscribers' with a Talk to sales button.",
+        caption: "Purchasely homepage, captured 2026-10-04: Homepage hero.",
+      },
+    ],
+  },
+  {
+    vendor: "Purchasely",
+    page: "pricing",
+    url: "https://www.purchasely.com/pricing",
+    captured: DATE,
+    full: asset("purchasely", "pricing-full-1-2026-10-04.png"),
+    fullParts: [asset("purchasely", "pricing-full-1-2026-10-04.png"), asset("purchasely", "pricing-full-2-2026-10-04.png"), asset("purchasely", "pricing-full-3-2026-10-04.png"), asset("purchasely", "pricing-full-4-2026-10-04.png")],
+    crops: [
+      {
+        claim: "no-public-price",
+        file: asset("purchasely", "pricing-no-public-price-2026-10-04.png"),
+        alt: "Purchasely /pricing serves the homepage: 'Turn app users into subscribers' with a Talk to sales button and no prices.",
+        caption: "Purchasely pricing page, captured 2026-10-04: No public pricing; the page directs to sales.",
+      },
+    ],
+  },
+  {
+    vendor: "Purchasely",
+    page: "docs",
+    url: "https://docs.purchasely.com/",
+    captured: DATE,
+    full: asset("purchasely", "docs-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "docs-home",
+        file: asset("purchasely", "docs-docs-home-2026-10-04.png"),
+        alt: "Purchasely documentation home page.",
+        caption: "Purchasely docs page, captured 2026-10-04: Purchasely docs.",
+      },
+    ],
+  },
+  {
+    vendor: "Purchasely",
+    page: "github-purchasely-ios",
+    url: "https://github.com/Purchasely/Purchasely-iOS",
+    captured: DATE,
+    full: asset("purchasely", "github-purchasely-ios-full-2026-10-04.png"),
+    crops: [
+      {
+        claim: "about",
+        file: asset("purchasely", "github-purchasely-ios-about-2026-10-04.png"),
+        alt: "GitHub repository page of Purchasely-iOS; the About sidebar shows no recognized license.",
+        caption: "Purchasely GitHub page, captured 2026-10-04: No recognized license on GitHub.",
+      },
+    ],
+  },
 ];
 
 /** Evidence for one vendor page, e.g. evidenceFor("RevenueCat", "pricing"). */
