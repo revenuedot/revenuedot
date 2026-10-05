@@ -35,7 +35,8 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 - **Never next to a problem.** No journey email within 24 hours of an alert email to the same person (`alert_states`), except the welcome.
 - **Bounded per pass:** 25 emails and 15 seconds; the job runs every 5 minutes (minute % 5 == 0). Each pass reads the last 3 days' sign-ups and one rotating slice of 200 older accounts. A send that fails gives its claim back, so a later pass retries.
 - **Live means seen live.** A sale counts only when RevenueDot recorded it within 2 days of the purchase and it did not come from an import (`transactions.source = 'import'`), so an imported recent renewal never fires the first-sale email.
-- **From a person.** `Kai from RevenueDot <kai@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`. Replies reach a human.
+- **From RevenueDot, not a person.** `RevenueDot <hello@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`, so replies reach the team. No founder sign-off (Kai, 2026-10-05: these are lifecycle emails, not personal email).
+- **Built for skimming.** Every email: an eyebrow ("Setup · step 2 of 5"), a heading of a few words, one or two short lines, a visual (the tutorial video's playable cover, or a framed dashboard screenshot from `apps/site/scripts/email-shots.mjs`), numbered steps of one line each with a bold title, one button, an optional "Good to know" box. No paragraph runs longer than two short sentences.
 - **Unsubscribe.** Every email carries a one-click `List-Unsubscribe` (RFC 8058) that turns off `users.product_emails`, and a footer link to Account settings → Notifications ("Setup help, tips and product news"). Billing, security, verification and alert emails are not affected.
 - **Links** carry `utm_source=revenuedot&utm_medium=email&utm_campaign=journeys&utm_content=<step>`, so DataFast attributes the visit and the goal.
 
@@ -54,7 +55,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 |---|---|---|---|
 | `first_sale` | after the first production sale, within 3 days | live | new developers: what comes next; migrators: "notifications reach RevenueDot, compare with import verify" |
 | `standard_welcome` | after Standard first starts (`billing_accounts.standard_started_at`), within 3 days | started after the launch | SSO, organizations, support promise, billing date |
-| `standard_canceled` | after the subscription is cancelled | Stripe status `canceled` after Standard started (a failed card or an unpaid checkout is not a choice, so it never triggers this) | reply: why? (letter) |
+| `standard_canceled` | after the subscription is cancelled | Stripe status `canceled` after Standard started (a failed card or an unpaid checkout is not a choice, so it never triggers this) | reply: why? |
 | `referral_joined` | after a friend signs up with their link | | thanks; Kai helps the friend |
 
 ### C. Switching from RevenueCat
@@ -62,15 +63,15 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 |---|---|---|---|---|
 | `cutover` | 7 days after live, sales in the last 3 days | migrating | turn RevenueCat off; a month at their last 7 days' pace (×30/7) on both bills | Switch from RevenueCat |
 | `switch_plan` | day 1 | migrating, no import, not live | import, run both, switch | Switch from RevenueCat |
-| `import_help` | day 4 | migrating, no import, not live | run the import together on a call (letter) | none |
+| `import_help` | day 4 | migrating, no import, not live | run the import together on a call | none |
 | `side_by_side` | 1 day after the import | not live | forward store notifications, point a test build | Switch from RevenueCat |
 | `forwarding_check` | 5 days after the import | no store notification since the import, not live | forwarding to RevenueCat first, then the stores' notification URLs | none |
 
 ### D. Revenue (complements the billing emails at 80% and 100% of Free)
 | Step | When | Condition | Goal |
 |---|---|---|---|
-| `enterprise` | tracked this month ≥ $500,000 | not Enterprise | book a call (letter) |
-| `upgrade_personal` | 10 days after the latest `free_100` billing email (last 35 days) | still Free, `upgrade_nudge` sent | reply or upgrade (letter) |
+| `enterprise` | tracked this month ≥ $500,000 | not Enterprise | book a call |
+| `upgrade_personal` | 10 days after the latest `free_100` billing email (last 35 days) | still Free, `upgrade_nudge` sent | reply or upgrade |
 | `upgrade_nudge` | 3 days after the latest `free_100` | still Free | upgrade to Standard; the bill for the month that passed $10,000 (may be last month) |
 | `pricing_explainer` | tracked this month ≥ $5,000 | Free, below $10,000 | understand the bill; add a card ($0 under $10,000) |
 
@@ -81,9 +82,9 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 | `store_keys` | 1 day after the SDK connected | no store connected | store credentials | none |
 | `connect_app` | 20 h after the first test purchase, or day 3 with an app | not migrating, SDK not connected | SDK pointed at RevenueDot | Connect your app |
 | `first_purchase` | day 1 | not migrating, no test purchase, no SDK | first test purchase | First purchase in 5 minutes |
-| `checkin` | day 3 | not migrating, no app | reply: what are you building? (letter) | none |
+| `checkin` | day 3 | not migrating, no app | reply: what are you building? | none |
 | `ai_setup` | day 6 | not migrating, SDK not connected | one prompt in Claude Code, Cursor or Codex | none |
-| `need_hand` | day 10 | SDK not connected; migrators only after an import (import_help made the offer before) | book 15 minutes (letter; migrators: set up forwarding together) | none |
+| `need_hand` | day 10 | SDK not connected; migrators only after an import (import_help made the offer before) | book 15 minutes (migrators: set up forwarding together) | none |
 | `last_call` | day 21 | SDK not connected | reply; onboarding then stops for good | none |
 
 ### F. Adoption (live; migrators after their `cutover` email, or 21 days after going live if it never went out)
@@ -93,14 +94,14 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 | `experiments` | 5 days after the first published paywall | no experiment started | start an experiment | Paywalls and experiments |
 | `recovery` | 10 days after live | payment recovery off | turn it on | none |
 | `team` | 12 days after live | confirmed email, nobody else in their projects | invite a teammate | none |
-| `how_going` | 14 days after live | sales in the last 7 days | reply: how is it going, and may we quote you (letter) | none |
+| `how_going` | 14 days after live | sales in the last 7 days | reply: how is it going, and may we quote you | none |
 
 ### G. Referral and win-back
 | Step | When | Condition | Goal |
 |---|---|---|---|
 | `referral` | 28 days after live | sales in the last 7 days; migrators 14 days after `cutover` | share a personal sign-up link; Kai helps the friend switch |
 | `assistant` | 35 days after live | no AI assistant connected, `ai_setup` never sent | connect ChatGPT, Claude or Cursor (video: RevenueDot in ChatGPT) |
-| `went_quiet` | 7 days without SDK traffic | was live, no sale in 7 days | reply: what changed? (letter) |
+| `went_quiet` | 7 days without SDK traffic | was live, no sale in 7 days | reply: what changed? |
 
 ### What a typical account receives
 - **New developer who goes live in a week:** welcome (minute 5) → first_purchase (day 1) → connect_app (day 2) → store_keys → go_live → first_sale → paywalls → experiments → recovery → team → how_going → referral → assistant. About 13 emails over 7 weeks, never two within 44 hours.

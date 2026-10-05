@@ -74,7 +74,7 @@ export function AccountNotificationsPage() {
         </Section>
         {me.data.account?.edition === "cloud" && (
           <Section title="Setup help and tips" id="product">
-            <Row label="Setup help, tips and product news" help="Short emails from Kai, the founder, while you set up: one step and a short video each, and they stop once a step is done. Security, billing and alert emails are separate.">
+            <Row label="Setup help, tips and product news" help="Short emails from RevenueDot while you set up: one step and a short video or screenshot each, and they stop once a step is done. Security, billing and alert emails are separate.">
               <Switch checked={me.data.user.product_emails ?? true} onChange={saveProduct} label="Email me setup help, tips and product news" />
             </Row>
           </Section>

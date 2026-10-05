@@ -147,7 +147,7 @@ describe("picking the step", () => {
     expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: WED - D }), WED, cfg)).toBe("standard_canceled");
   });
 
-  it("never sends migrators three letters with the same question", () => {
+  it("never sends migrators three emails with the same question", () => {
     const rc = { path: "revenuecat" as const };
     expect(pickStep(facts({ ...rc, createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D], ["switch_plan", WED - 2 * D]) }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...rc, createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D], ["switch_plan", WED - 9 * D], ["import_help", WED - 6 * D]) }), WED, cfg)).toBeNull();
@@ -185,9 +185,9 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     await s!.db.update(schema.users).set({ createdAt: s!.now() }).where(eq(schema.users.email, email));
   };
   const run = () => runJourneys({ db: s!.db, mailer: s!.mail, publicUrl: "https://dash.example.com", config: cfg }, s!.now());
-  const journeyMails = (to: string) => s!.mail.sent.filter((m) => m.to === to && m.from?.includes("kai@mail.revenuedot.app"));
+  const journeyMails = (to: string) => s!.mail.sent.filter((m) => m.to === to && m.from?.includes("hello@mail.revenuedot.app"));
 
-  it("sends the welcome from Kai once, with one-click unsubscribe, and the unsubscribe turns them off", async () => {
+  it("sends the welcome from RevenueDot once, with one-click unsubscribe, and the unsubscribe turns them off", async () => {
     await cloud();
     await signup("maya@habitly.app", { name: "Maya Chen", time_zone: "America/New_York" });
     await s!.settle();
@@ -335,7 +335,8 @@ describe("templates", () => {
       for (const part of [m.subject, m.text, m.html]) expect(part, step).not.toMatch(/undefined|NaN|\[object|href=""/);
       expect(Buffer.byteLength(m.html), step).toBeLessThan(102_000);
       expect(m.text, step).toContain("Unsubscribe: https://app.revenuedot.app/auth/journeys/unsubscribe/x");
-      expect(m.text, step).toMatch(/Hi there,|^Welcome to RevenueDot/m);
+      expect(m.text, step).not.toMatch(/\bKai\b|Founder/);
+      expect(m.html, step).toContain("Questions?");
       for (const [, url] of m.html.matchAll(/href="(https:\/\/(?:app\.)?revenuedot\.app\/(?!auth\/)[^"]*)"/g)) expect(url, step).toContain("utm_content=" + step);
     }
   });

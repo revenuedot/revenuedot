@@ -268,7 +268,7 @@ test clock renewal, declined card, recovery, portal), plus `apps/server/test/bil
 
 ## Onboarding and growth emails (off until `REVENUEDOT_JOURNEYS=on`)
 Spec: `prd/onboarding-emails/PRD.md`. The cron tick picks at most one email per account every 5 minutes from 27 steps
-(welcome to referral) and sends it from `Kai from RevenueDot <kai@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`.
+(welcome to referral) and sends it from `RevenueDot <hello@mail.revenuedot.app>`, Reply-To `hello@revenuedot.app`.
 - **Secrets** on Worker `revenuedot`: `REVENUEDOT_JOURNEYS` (`on` sends; anything else is off), `REVENUEDOT_JOURNEYS_SINCE`
   (ISO time; onboarding steps go only to accounts created after it), `REVENUEDOT_JOURNEYS_EXCLUDE` (comma list of domains
   and addresses never emailed, for example `circo.so,revenuedot.app`). Set with
