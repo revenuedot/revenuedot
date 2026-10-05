@@ -159,7 +159,8 @@ async function syncLocked(d: BillingWebhookDeps, out: Outbox, customer: string, 
     || !same(acct.currentPeriodEnd, periodEnd) || !same(acct.cancelAt, cancelAt);
   // Only a real change touches the row, so a settled account leaves the reconcile set after 7 days.
   if (changed) {
-    await db.update(A).set({ plan: s.plan, status: s.status, stripeCustomerId: customer, stripeSubscriptionId: current.id, currentPeriodEnd: periodEnd, cancelAt, updatedAt: now }).where(eq(A.userId, acct.userId));
+    await db.update(A).set({ plan: s.plan, status: s.status, stripeCustomerId: customer, stripeSubscriptionId: current.id, currentPeriodEnd: periodEnd, cancelAt, updatedAt: now,
+      ...(s.plan === "standard" && !acct.standardStartedAt ? { standardStartedAt: now } : {}) }).where(eq(A.userId, acct.userId));
     await db.update(schema.users).set({ plan: s.plan }).where(eq(schema.users.id, acct.userId));
   }
   // Past due or unpaid: the latest invoice from Stripe too, so its row and emails are right even if invoice webhooks were lost.

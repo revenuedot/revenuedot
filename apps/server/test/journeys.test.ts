@@ -26,7 +26,7 @@ function facts(o: Partial<Facts> = {}): Facts {
     firstAppAt: null, testPurchaseAt: null, sdkFirstAt: null, sdkLastAt: null, sdk: null, storeConnected: false, liveAt: null, lastSaleAt: null,
     firstSale: null, rcImportAt: null, importedCustomers: 0, paywallPublishedAt: null, experimentStartedAt: null, teammates: 0, recoveryOn: false,
     assistantConnected: false, plan: "free", planSince: null, canceledAt: null, tracked: 0, free100At: null, alertAt: null, lastNotificationAt: null,
-    referralJoinedAt: null, sent: new Map(), ...o,
+    referralJoinedAt: null, last7: 0, overTracked: 0, sent: new Map(), ...o,
   };
 }
 const sent = (...steps: [StepId, number][]) => new Map<StepId, number>(steps);
@@ -147,6 +147,25 @@ describe("picking the step", () => {
     expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: WED - D }), WED, cfg)).toBe("standard_canceled");
   });
 
+  it("never sends migrators three letters with the same question", () => {
+    const rc = { path: "revenuecat" as const };
+    expect(pickStep(facts({ ...rc, createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D], ["switch_plan", WED - 2 * D]) }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...rc, createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D], ["switch_plan", WED - 9 * D], ["import_help", WED - 6 * D]) }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...rc, rcImportAt: WED - 8 * D, firstAppAt: WED - 9 * D, lastNotificationAt: WED - D, createdAt: WED - 10 * D - H,
+      sent: sent(["welcome", WED - 10 * D], ["switch_plan", WED - 9 * D], ["side_by_side", WED - 7 * D]) }), WED, cfg)).toBe("need_hand");
+  });
+
+  it("starts adoption for a migrator whose cutover email never went out, 21 days after going live", () => {
+    const f = { path: "revenuecat" as const, createdAt: WED - 40 * D, rcImportAt: WED - 35 * D, liveAt: WED - 25 * D, lastSaleAt: WED - 6 * D };
+    expect(pickStep(facts(f), WED, cfg)).toBe("paywalls");
+    expect(pickStep(facts({ ...f, liveAt: WED - 20 * D }), WED, cfg)).toBeNull();
+  });
+
+  it("asks why only after a real cancellation, and thanks Standard once from its first start after launch", () => {
+    expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: null }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "standard", planSince: WED - D }), WED, cfg)).toBe("standard_welcome");
+  });
+
   it("gives a teammate who joined by invite one welcome and nothing else", () => {
     const f = facts({ ownsProjects: false, memberOf: { projectId: "proj_9", projectName: "Habitly", inviter: "Maya" }, projectId: null });
     expect(pickStep(f, WED, cfg)).toBe("teammate_welcome");
@@ -192,7 +211,8 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     const [u1] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "maya@habitly.app"));
     expect(u1!.productEmails).toBe(false);
     expect((await raw("POST", "/auth/journeys/unsubscribe/not-a-real-token-at-all-xx")).status).toBe(404);
-    // Unsubscribed: day 1 brings nothing.
+    // Unsubscribed (and confirmed, so no verification reminder): day 1 brings nothing.
+    await s!.db.update(schema.users).set({ emailVerifiedAt: s!.now() }).where(eq(schema.users.email, "maya@habitly.app"));
     s!.advance(D);
     expect((await run()).sent).toBe(0);
   });
@@ -217,6 +237,34 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     await signup("qa@example.com");
     s!.advance(6 * 60_000);
     expect((await run()).sent).toBe(0);
+  });
+
+  it("still sends the verification reminder to someone who turned product emails off", async () => {
+    await cloud();
+    await signup("lena@health.eu");
+    await s!.db.update(schema.users).set({ productEmails: false }).where(eq(schema.users.email, "lena@health.eu"));
+    s!.advance(6 * 60_000);
+    expect((await run()).sent).toBe(0);
+    s!.advance(D);
+    expect((await run()).sent).toBe(1);
+    expect(journeyMails("lena@health.eu")[0]!.subject).toContain("Confirm your email");
+  });
+
+  it("prices the cutover on the last 7 days and the upgrade on the month that passed $10,000", async () => {
+    await cloud();
+    await signup("chris@studio.app");
+    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "chris@studio.app"));
+    const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+    await s!.db.insert(schema.billingUsage).values({ projectId: p!.id, month: "2026-09", ownerUserId: u!.id, trackedRevenueUsd: 14_000, transactions: 100, computedAt: s!.now() });
+    await s!.db.insert(schema.billingNotices).values({ userId: u!.id, key: "2026-09:free_100", sentAt: new Date("2026-09-27T10:00:00Z") });
+    s!.setNow(new Date("2026-10-01T14:00:00Z")); // 3 days later, a new month with nothing tracked yet
+    const { loadFacts, contextFor } = await import("../src/services/journeys.js");
+    const [f] = await loadFacts(s!.db, [u!.id], s!.now(), SINCE);
+    expect(f!.overTracked).toBe(14_000);
+    const c = await contextFor(s!.db, f!, "upgrade_nudge", "https://dash.example.com", "u", null, s!.now());
+    expect(c.overMonth).toBe("September");
+    expect(c.bills!.revenuedot).toBe(20);
+    expect(journeyEmail(c).text).toContain("tracked $14,000 in September");
   });
 
   it("keeps the referral code from sign-up and celebrates the first live sale", async () => {

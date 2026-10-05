@@ -45,6 +45,8 @@ export interface Facts {
   paywallPublishedAt: number | null; experimentStartedAt: number | null;
   teammates: number; recoveryOn: boolean; assistantConnected: boolean;
   plan: string; planSince: number | null; canceledAt: number | null; tracked: number; free100At: number | null;
+  /** Production revenue recorded in the last 7 days, and the tracked revenue of the month the free_100 email was about. */
+  last7: number; overTracked: number;
   alertAt: number | null; lastNotificationAt: number | null; referralJoinedAt: number | null;
   sent: Map<StepId, number>;
 }
@@ -69,7 +71,9 @@ const after = (t: number | null, ms: number) => (t === null ? null : t + ms);
 const notYet = (f: Facts, ...steps: StepId[]) => steps.every((s) => !f.sent.has(s));
 const migrating = (f: Facts) => f.path === "revenuecat" || f.rcImportAt !== null;
 /** Live and past the switch: everyone live, except migrators until their cutover email has gone out. */
-const adopting = (f: Facts) => f.liveAt !== null && (!migrating(f) || f.sent.has("cutover"));
+const adopting = (f: Facts, now: number) => f.liveAt !== null && (!migrating(f) || f.sent.has("cutover") || now > f.liveAt + 21 * D);
+/** When adoption emails start counting: going live, or for migrators the cutover email (else 21 days after going live). */
+const adoptAt = (f: Facts) => (!migrating(f) ? f.liveAt! : f.sent.get("cutover") ?? f.liveAt! + 21 * D);
 
 /** The plan, in priority order: when two steps are due, the first one wins and the other waits. */
 export const STEPS: Step[] = [
@@ -101,20 +105,22 @@ export const STEPS: Step[] = [
   { id: "connect_app", onboarding: true, freshFor: 10 * D,
     due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
   { id: "first_purchase", onboarding: true, freshFor: 4 * D, due: (f) => (!migrating(f) && !f.testPurchaseAt && !f.sdkFirstAt && !f.liveAt ? f.createdAt + D : null) },
-  { id: "checkin", onboarding: true, freshFor: 4 * D, due: (f) => (!f.firstAppAt && !f.liveAt ? f.createdAt + 3 * D : null) },
+  { id: "checkin", onboarding: true, freshFor: 4 * D, due: (f) => (!migrating(f) && !f.firstAppAt && !f.liveAt ? f.createdAt + 3 * D : null) },
   { id: "ai_setup", onboarding: true, freshFor: 5 * D, due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt ? f.createdAt + 6 * D : null) },
-  { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt ? f.createdAt + 10 * D : null) },
+  // Migrators without an import already had the offer in import_help.
+  { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt && !(migrating(f) && !f.rcImportAt) ? f.createdAt + 10 * D : null) },
   { id: "last_call", onboarding: true, freshFor: 9 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt ? f.createdAt + 21 * D : null) },
   // Adoption, once live. Migrators start once the cutover email has gone out.
-  { id: "paywalls", freshFor: 14 * D, due: (f) => (adopting(f) && !f.paywallPublishedAt ? f.liveAt! + 3 * D : null) },
-  { id: "experiments", freshFor: 14 * D, due: (f) => (adopting(f) && f.paywallPublishedAt && !f.experimentStartedAt ? Math.max(f.paywallPublishedAt + 5 * D, f.liveAt! + 5 * D) : null) },
-  { id: "recovery", freshFor: 14 * D, due: (f) => (adopting(f) && !f.recoveryOn ? f.liveAt! + 10 * D : null) },
-  { id: "team", freshFor: 14 * D, due: (f) => (adopting(f) && f.verified && f.teammates === 0 ? f.liveAt! + 12 * D : null) },
-  { id: "how_going", freshFor: 14 * D, due: (f, now) => (adopting(f) && f.lastSaleAt && now - f.lastSaleAt < 7 * D ? f.liveAt! + 14 * D : null) },
-  { id: "assistant", freshFor: 14 * D, due: (f) => (adopting(f) && !f.assistantConnected && notYet(f, "ai_setup") ? f.liveAt! + 16 * D : null) },
+  { id: "paywalls", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && !f.paywallPublishedAt ? adoptAt(f) + 3 * D : null) },
+  { id: "experiments", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && f.paywallPublishedAt && !f.experimentStartedAt ? Math.max(f.paywallPublishedAt + 5 * D, adoptAt(f) + 5 * D) : null) },
+  { id: "recovery", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && !f.recoveryOn ? adoptAt(f) + 10 * D : null) },
+  { id: "team", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && f.verified && f.teammates === 0 ? adoptAt(f) + 12 * D : null) },
+  { id: "how_going", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && f.lastSaleAt && now - f.lastSaleAt < 7 * D ? adoptAt(f) + 14 * D : null) },
   // Referral (after the "how is it going" note) and win-back.
   { id: "referral", freshFor: 30 * D,
-    due: (f, now) => (adopting(f) && f.lastSaleAt && now - f.lastSaleAt < 7 * D && (!migrating(f) || (f.sent.get("cutover") ?? Infinity) + 14 * D <= now) ? f.liveAt! + 28 * D : null) },
+    due: (f, now) => (adopting(f, now) && f.lastSaleAt && now - f.lastSaleAt < 7 * D && (!migrating(f) || (f.sent.get("cutover") ?? Infinity) + 14 * D <= now) ? adoptAt(f) + 28 * D : null) },
+  // After the referral, so the four weeks after going live stay light.
+  { id: "assistant", freshFor: 14 * D, due: (f, now) => (adopting(f, now) && !f.assistantConnected && notYet(f, "ai_setup") ? adoptAt(f) + 35 * D : null) },
   { id: "went_quiet", freshFor: 14 * D, due: (f, now) => (f.liveAt && f.sdkLastAt && now - f.sdkLastAt >= 7 * D && (!f.lastSaleAt || now - f.lastSaleAt >= 7 * D) ? f.sdkLastAt + 7 * D : null) },
 ];
 
@@ -137,7 +143,7 @@ export function inWindow(step: Step, at: number, timeZone: string | null) {
 }
 
 /** The step to send now, or null. Pure: tests drive it with hand-made facts. */
-export function pickStep(f: Facts, now: number, cfg: Pick<JourneyConfig, "since">): StepId | null {
+export function pickStep(f: Facts, now: number, cfg: Pick<JourneyConfig, "since">, only?: StepId[]): StepId | null {
   if (f.sent.has("last_call") && !f.sdkFirstAt && !f.liveAt) return null;
   // The welcome is sign-up mail: it neither waits for the caps nor counts towards them. The verification reminder skips the
   // caps but counts, so the day-1 nudge does not follow it minutes later.
@@ -146,7 +152,7 @@ export function pickStep(f: Facts, now: number, cfg: Pick<JourneyConfig, "since"
   const capped = now - last < MIN_GAP_MS || times.filter((t) => now - t < 7 * D).length >= WEEK_MAX;
   const nearAlert = f.alertAt !== null && now - f.alertAt < D;
   for (const s of STEPS) {
-    if (f.sent.has(s.id)) continue;
+    if (f.sent.has(s.id) || (only && !only.includes(s.id))) continue;
     // People who only joined someone else's project get the teammate welcome and nothing else.
     if (!f.ownsProjects && s.id !== "teammate_welcome") continue;
     if (s.onboarding && f.createdAt < cfg.since.getTime()) continue;
@@ -205,7 +211,11 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
         + (SELECT count(*) FROM invites i JOIN owned o ON o.id = i.project_id WHERE o.uid = u.id AND i.revoked_at IS NULL) AS teammates,
       (SELECT EXISTS (SELECT 1 FROM owned o WHERE o.uid = u.id AND o.recovery_settings->>'enabled' = 'true')) AS recovery_on,
       (SELECT EXISTS (SELECT 1 FROM api_keys k WHERE k.created_by_user_id = u.id AND k.oauth_client_id IS NOT NULL)) AS assistant_connected,
-      ba.plan AS ba_plan, ba.status AS ba_status, ba.updated_at AS ba_updated_at, ba.created_at AS ba_created_at, ba.stripe_subscription_id AS ba_sub,
+      ba.plan AS ba_plan, ba.status AS ba_status, ba.updated_at AS ba_updated_at, ba.standard_started_at AS ba_started, ba.stripe_subscription_id AS ba_sub,
+      (SELECT coalesce(sum(t.revenue_usd), 0) FROM transactions t JOIN owned o ON o.id = t.project_id WHERE o.uid = u.id AND NOT t.is_sandbox AND t.revenue_usd > 0
+          AND t.kind IN ('purchase','renewal','one_time') AND t.created_at >= ${new Date(now.getTime() - 7 * D).toISOString()}::timestamptz) AS last7,
+      (SELECT coalesce(sum(bu.tracked_revenue_usd), 0) FROM billing_usage bu WHERE bu.owner_user_id = u.id AND bu.month = (
+          SELECT split_part(bn.key, ':', 1) FROM billing_notices bn WHERE bn.user_id = u.id AND bn.key LIKE '%:free_100' ORDER BY bn.sent_at DESC LIMIT 1)) AS over_tracked,
       (SELECT max(a.last_notification_at) FROM apps a JOIN owned o ON o.id = a.project_id WHERE o.uid = u.id) AS last_notification_at,
       (SELECT max(r.created_at) FROM users r WHERE u.referral_code IS NOT NULL AND r.referred_by = u.referral_code) AS referral_joined_at,
       (SELECT coalesce(sum(bu.tracked_revenue_usd), 0) FROM billing_usage bu WHERE bu.owner_user_id = u.id AND bu.month = ${month}) AS tracked,
@@ -242,10 +252,11 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       rcImportAt: ts(r.rc_import_at), importedCustomers: Number(r.imported_customers ?? 0),
       paywallPublishedAt: ts(r.paywall_published_at), experimentStartedAt: ts(r.experiment_started_at),
       teammates: Number(r.teammates ?? 0), recoveryOn: r.recovery_on === true, assistantConnected: r.assistant_connected === true,
-      // Standard: the billing row's last change is when the subscription became active. Only accounts whose billing began
-      // after the launch get the welcome, so long-time payers never get it on some later billing update.
-      plan, planSince: plan === "standard" && (ts(r.ba_created_at) ?? 0) >= sinceMs ? ts(r.ba_updated_at) : null,
-      canceledAt: plan === "free" && r.ba_sub && ["canceled", "unpaid", "incomplete_expired", "paused"].includes(String(r.ba_status)) ? ts(r.ba_updated_at) : null,
+      // Standard: thanked once, from the first time it became active, and only when that was after the launch. Asked why only
+      // after a real cancellation (a failed card is "unpaid", an unpaid checkout is "incomplete": neither is a choice).
+      plan, planSince: plan === "standard" && (ts(r.ba_started) ?? 0) >= sinceMs ? ts(r.ba_started) : null,
+      canceledAt: plan === "free" && r.ba_sub && r.ba_started && String(r.ba_status) === "canceled" ? ts(r.ba_updated_at) : null,
+      last7: Number(r.last7 ?? 0), overTracked: Number(r.over_tracked ?? 0),
       tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at),
       lastNotificationAt: ts(r.last_notification_at), referralJoinedAt: ts(r.referral_joined_at), sent,
     };
@@ -287,10 +298,15 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
     sale: f.firstSale ? { product: f.firstSale.product, amount: money(f.firstSale.amount, f.firstSale.currency), country: COUNTRY(f.firstSale.country) } : null,
   };
   // The cutover compares a whole month at this month's pace; the upgrade emails quote the revenue so far.
-  const day = now.getUTCDate(), days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
-  c.projected = Math.round((f.tracked / day) * days);
-  const basis = step === "cutover" ? c.projected : f.tracked;
+  // The cutover prices a month at the last 7 days' pace (always at least 7 days live by then); the upgrade emails price the
+  // month that passed $10,000, which may be last month.
+  c.last7 = f.last7;
+  c.projected = Math.round((f.last7 * 30) / 7);
+  c.overTracked = f.overTracked || f.tracked;
+  c.overMonth = f.free100At ? new Date(f.free100At).toLocaleDateString("en-US", { month: "long", timeZone: "UTC" }) : c.month;
+  const basis = step === "cutover" ? c.projected : step.startsWith("upgrade") ? c.overTracked : f.tracked;
   c.bills = { revenuedot: rd(basis), revenuecat: rc(basis) };
+  c.importedOn = f.rcImportAt ? new Date(f.rcImportAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : undefined;
   if (pathToken) c.pathUrl = (p) => `${base}/auth/journeys/path/${pathToken}?path=${p}`;
   if (step === "verify_reminder") {
     await retireTokens(db, "email_verify", f.userId, now);
@@ -328,7 +344,7 @@ export async function runJourneys(deps: JourneyDeps, now: Date, limits = JOURNEY
   const gap = new Date(now.getTime() - MIN_GAP_MS);
   const candidates = rowsOf<{ id: string; email: string }>(await db.execute(sql`
     SELECT u.id, u.email FROM users u
-    WHERE u.product_emails AND (u.created_at >= ${recent.toISOString()}::timestamptz
+    WHERE (u.product_emails OR (u.email_verified_at IS NULL AND u.created_at >= ${recent.toISOString()}::timestamptz)) AND (u.created_at >= ${recent.toISOString()}::timestamptz
       OR NOT EXISTS (SELECT 1 FROM journey_sends js WHERE js.user_id = u.id AND js.sent_at >= ${gap.toISOString()}::timestamptz))
     ORDER BY u.created_at DESC`)).filter((u) => !excluded(u.email, config.exclude));
   if (!candidates.length) return out;
@@ -339,8 +355,8 @@ export async function runJourneys(deps: JourneyDeps, now: Date, limits = JOURNEY
     for (const f of facts) {
       if (out.sent >= limits.emails || Date.now() - t0 >= limits.budgetMs) break;
       out.checked++;
-      if (!f.productEmails) continue;
-      const step = pickStep(f, now.getTime(), config);
+      // The verification reminder is account mail, not product mail: it goes even to people who turned tips off.
+      const step = pickStep(f, now.getTime(), config, f.productEmails ? undefined : ["verify_reminder"]);
       if (!step) continue;
       if (await sendStep(deps, f, step, now, base)) out.sent++;
     }

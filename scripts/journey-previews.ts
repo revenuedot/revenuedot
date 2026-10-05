@@ -37,10 +37,12 @@ const ctxFor = (step: StepId): JourneyCtx => {
   const c = base(step);
   c.bills = { revenuedot: rd(c.tracked!), revenuecat: rc(c.tracked!) };
   if (step === "teammate_welcome") c.first = "Jordan";
-  c.projected = Math.round(c.tracked! / 4 * 31);
+  c.last7 = 11_270; c.projected = Math.round((c.last7 * 30) / 7);
+  c.overTracked = 13_870; c.overMonth = "September"; c.importedOn = "September 24";
   c.liveSince = "September 2";
-  if (["checkin", "need_hand", "import_help", "forwarding_check", "side_by_side", "switch_plan", "cutover"].includes(step)) c.migrating = true;
-  if (step === "cutover") c.bills = { revenuedot: rd(c.projected), revenuecat: rc(c.projected) };
+  if (["need_hand", "import_help", "forwarding_check", "side_by_side", "switch_plan", "cutover"].includes(step)) c.migrating = true;
+  const basis = step === "cutover" ? c.projected : step.startsWith("upgrade") ? c.overTracked : c.tracked!;
+  c.bills = { revenuedot: rd(basis), revenuecat: rc(basis) };
   return c;
 };
 

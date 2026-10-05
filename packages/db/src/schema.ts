@@ -1968,6 +1968,8 @@ export const billingAccounts = pgTable("billing_accounts", {
   stripeSubscriptionId: text("stripe_subscription_id"),
   currentPeriodEnd: ts("current_period_end"),
   cancelAt: ts("cancel_at"),
+  /** When the account first became Standard (onboarding emails thank it once, prd/onboarding-emails/PRD.md). Kept when it lapses. */
+  standardStartedAt: ts("standard_started_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
   createdAt: created(),
 }, (t) => [uniqueIndex("billing_accounts_customer").on(t.stripeCustomerId)]);

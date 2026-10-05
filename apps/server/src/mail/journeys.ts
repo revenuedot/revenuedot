@@ -26,7 +26,7 @@ export type VideoId = "first-purchase" | "connect-your-app" | "switch-from-reven
  */
 export const VIDEOS: Record<VideoId, { title: string; length: string; slug: string; youtube?: string; ready: boolean }> = {
   "first-purchase": { title: "Your first purchase in 5 minutes", length: "1:30", slug: "revenuedot-first-purchase", ready: false },
-  "connect-your-app": { title: "Connect your app with one line", length: "1:30", slug: "revenuedot-connect-your-app", ready: false },
+  "connect-your-app": { title: "Connect your app to RevenueDot", length: "1:30", slug: "revenuedot-connect-your-app", ready: false },
   "switch-from-revenuecat": { title: "Switch from RevenueCat without losing a renewal", length: "1:40", slug: "revenuedot-switch-from-revenuecat", ready: false },
   "paywalls-and-experiments": { title: "Build a paywall and test it", length: "1:30", slug: "revenuedot-paywalls-and-experiments", ready: false },
   "chatgpt-demo": { title: "Run your subscriptions from ChatGPT", length: "1:27", slug: "revenuedot-chatgpt-demo", ready: true },
@@ -64,8 +64,14 @@ export interface JourneyCtx {
   month?: string;
   /** What RevenueDot Standard and RevenueCat charge at given monthly revenues: [revenue, RevenueDot, RevenueCat]. */
   priceRows?: [number, number, number][];
-  /** This month's revenue at the current pace (tracked so far, scaled to the whole month). */
+  /** A month at the last 7 days' pace (last7 × 30 / 7), and the 7 days' production revenue. */
   projected?: number;
+  last7?: number;
+  /** The month that passed Cloud Free's $10,000, and its tracked revenue. */
+  overMonth?: string;
+  overTracked?: number;
+  /** The first RevenueCat import's date, "October 2". */
+  importedOn?: string;
   /** A month's bill on each: at the current pace for the cutover, on the revenue so far for the upgrade emails. */
   bills?: { revenuedot: number; revenuecat: number };
   /** Moving from RevenueCat (chose that path, or imported). */
@@ -188,20 +194,18 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   checkin: (c) => ({
     look: "letter",
     subject: c.first ? `Quick question, ${c.first}` : "Quick question about your app",
-    preheader: c.migrating ? "What's in the way of the import? One line is enough." : "What are you building? One line is enough.",
-    paragraphs: c.migrating
-      ? [hi(c), `You said you're on RevenueCat, and ${proj(c)} has no app in it yet. What's in the way of the import? One line is enough, and I'll help.`]
-      : [
-        hi(c),
-        `${proj(c)} doesn't have an app in it yet, so I wanted to ask: what are you building?`,
-        "Tell me your stack (Swift, Kotlin, Flutter, React Native or Expo) and whether you use RevenueCat today. I'll reply with the shortest path for your app. One line is enough.",
-      ],
+    preheader: "What are you building? One line is enough.",
+    paragraphs: [
+      hi(c),
+      `${proj(c)} doesn't have an app in it yet, so I wanted to ask: what are you building?`,
+      "Tell me your stack (Swift, Kotlin, Flutter, React Native or Expo) and whether you use RevenueCat today. I'll reply with the shortest path for your app. One line is enough.",
+    ],
   }),
 
   connect_app: (c) => ({
     look: "guide",
     subject: c.testPurchase ? "It works. Now connect your app" : "Connect your app to RevenueDot",
-    preheader: "Two settings in the SDK, and nothing else in your app changes.",
+    preheader: "Add the SDK, point it at RevenueDot, and start with your test key.",
     heading: c.testPurchase ? "Your test purchase worked" : "Connect your app",
     paragraphs: [
       c.testPurchase
@@ -289,7 +293,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     paragraphs: [
       hi(c),
       c.migrating
-        ? `Moving off RevenueCat is fiddly, and I'm happy to help. [Book 15 minutes](${BOOKING_URL}) and we'll run your import together.`
+        ? `Your RevenueCat data is in, but the side-by-side run isn't finished yet. [Book 15 minutes](${BOOKING_URL}) and we'll set up forwarding together.`
         : `Purchases are fiddly to set up, and I'm happy to help. [Book 15 minutes](${BOOKING_URL}) and we'll connect your app together on a call.`,
       "Or reply with where you got stuck (a screenshot helps) and I'll answer myself.",
     ],
@@ -301,7 +305,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     preheader: "Your project stays free and ready whenever you are.",
     paragraphs: [
       hi(c),
-      "Your app hasn't connected to RevenueDot yet, so this is my last setup email. If the timing is wrong, that's fine: your project stays free and ready whenever you are.",
+      `${c.migrating ? (c.importedOn ? "Your side-by-side run hasn't started yet" : "You haven't imported from RevenueCat yet") : "Your app hasn't connected to RevenueDot yet"}, so this is my last setup email. If the timing is wrong, that's fine: your project stays free and ready whenever you are.`,
       "If something didn't work, or RevenueDot is missing something you need, I'd really like to know. One line back helps me fix it for the next person.",
     ],
   }),
@@ -313,9 +317,9 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     heading: "Your plan to switch from RevenueCat",
     paragraphs: [`${hi(c)} here's the safe way to move, the one RevenueDot is built around. Your app keeps the RevenueCat SDK, and RevenueCat keeps running until you turn it off.`],
     steps: [
-      { title: "Import", text: "One command copies apps, products, offerings, customers and purchase history: `npx revenuedot import --from-revenuecat --rc-project proj...`. It asks for a RevenueCat v2 secret key and a RevenueDot secret key, so confirm your email first." },
+      { title: "Import", text: "One command copies apps, products, offerings, customers and purchase history: `npx revenuedot import --from-revenuecat --rc-project <your RevenueCat project id> --to https://api.revenuedot.app`. It asks for a RevenueCat v2 secret key and a RevenueDot secret key, so confirm your email first." },
       { title: "Run both", text: "Forward store notifications so RevenueCat and RevenueDot both see every renewal." },
-      { title: "Switch", text: "Ship the one-line change in your next release. Turn RevenueCat off once the numbers match." },
+      { title: "Switch", text: "Point the SDK at RevenueDot in your next release. Turn RevenueCat off once the numbers match." },
     ],
     video: "switch-from-revenuecat",
     button: { label: "Start the import", url: docs("migrate/importer") },
@@ -351,7 +355,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     ],
     steps: [
       { title: "Forward store notifications", text: "Apple and Google send to RevenueDot, and RevenueDot passes each one on to RevenueCat. Then turn on **Track new purchases from server-to-server notifications** for each app." },
-      { title: "Point a test build at RevenueDot", text: "One setting in the SDK. Your production app stays on RevenueCat for now." },
+      { title: "Point a test build at RevenueDot", text: "Two settings in the SDK: the RevenueDot URL, and the signature check turned off. Your production app stays on RevenueCat for now." },
       { title: "Compare for a week", text: "Active subscriptions and revenue should match. `npx revenuedot import verify` checks for you." },
     ],
     video: "switch-from-revenuecat",
@@ -368,8 +372,8 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     preheader: "One setting in App Store Connect and Google Play finishes the side-by-side run.",
     heading: "Point the stores at RevenueDot",
     paragraphs: [
-      `${hi(c)} your import finished five days ago, but no App Store or Google Play notification has reached ${proj(c)} since. Without them, RevenueDot can't see renewals, refunds or cancellations as they happen.`,
-      "Set RevenueDot's notification URL in App Store Connect and Google Play. RevenueDot passes every notification on to RevenueCat, so nothing changes for RevenueCat.",
+      `${hi(c)} your import finished${c.importedOn ? ` on ${c.importedOn}` : ""}, but no App Store or Google Play notification has reached ${proj(c)} since. Without them, RevenueDot can't see renewals, refunds or cancellations as they happen.`,
+      "First, on each app's page in RevenueDot, paste RevenueCat's notification URL into **Forward notifications to RevenueCat or your own server**. Then set RevenueDot's notification URL in App Store Connect, and add a second Pub/Sub push subscription for Google Play. RevenueCat keeps getting every notification.",
     ],
     button: { label: "Set up forwarding", url: docs("migrate/dual-run") },
     links: [{ label: "Your apps' notification URLs", url: dash(c, "/apps") }],
@@ -379,13 +383,13 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   cutover: (c) => ({
     look: "guide",
     subject: "Ready to turn RevenueCat off?",
-    preheader: c.bills ? `At this month's pace: ${usd(c.bills.revenuedot)} on RevenueDot, ${usd(c.bills.revenuecat)} on RevenueCat.` : "Your cutover checklist.",
+    preheader: c.bills ? `At your last 7 days' pace: ${usd(c.bills.revenuedot)} a month on RevenueDot, ${usd(c.bills.revenuecat)} on RevenueCat.` : "Your cutover checklist.",
     heading: "A week of live sales on RevenueDot",
-    paragraphs: [`${hi(c)} ${proj(c)} has recorded live sales on RevenueDot for a week. Here's what each would charge you at this month's pace:`],
+    paragraphs: [`${hi(c)} ${proj(c)} has recorded live sales on RevenueDot for a week. Here's what each would charge for a month at your last 7 days' pace:`],
     table: c.bills ? {
       head: ["", "A month", "A year"],
       rows: [["RevenueCat", usd(c.bills.revenuecat), usd(c.bills.revenuecat * 12)], ["RevenueDot Cloud", usd(c.bills.revenuedot), usd(c.bills.revenuedot * 12)]],
-      note: c.projected !== undefined ? `Based on ${usd(c.projected)} a month, from ${usd(c.tracked ?? 0)} tracked so far in ${c.month}. RevenueCat charges 1% of all revenue once you pass $2,500 a month; RevenueDot 0.5% above $10,000, capped at $999.` : undefined,
+      note: c.projected !== undefined ? `Based on ${usd(c.projected)} a month, from ${usd(c.last7 ?? 0)} in the last 7 days. RevenueCat charges 1% of all revenue once you pass $2,500 a month; RevenueDot 0.5% above $10,000, capped at $999.` : undefined,
     } : undefined,
     after: ["When `import verify` shows no differences and few users still run the old app version, move your webhooks to RevenueDot in the same hour you turn RevenueCat's off, stop forwarding, then turn RevenueCat off."],
     button: { label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
@@ -450,7 +454,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
 
   paywalls: (c) => ({
     look: "guide",
-    subject: "Change your paywall without an app release",
+    subject: "Edit your paywall from the dashboard",
     preheader: "Start from a template, edit it in the dashboard, publish.",
     heading: "Your paywall, editable any time",
     paragraphs: [
@@ -516,7 +520,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     paragraphs: [
       hi(c),
       `${proj(c)} has been selling through RevenueDot for two weeks. Thank you for trusting us with your purchases.`,
-      "How is it going? What's the one thing you'd change? And if it's working well, would you mind if I quoted a sentence from you on our site? Just reply.",
+      "How is it going, and what's the one thing you'd change? One line back is plenty.",
     ],
   }),
 
@@ -554,12 +558,12 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
   upgrade_nudge: (c) => ({
     look: "guide",
     subject: "Two minutes to move to Cloud Standard",
-    preheader: c.bills ? `On this month's revenue so far: ${usd(c.bills.revenuedot)} on Standard.` : "0.5% above $10,000, capped at $999 a month.",
+    preheader: c.bills ? `On ${usd(c.overTracked ?? 0)} a month: ${usd(c.bills.revenuedot)} on Standard.` : "0.5% above $10,000, capped at $999 a month.",
     heading: "Your apps outgrew Cloud Free",
     paragraphs: [
-      `${hi(c)} your apps have tracked **${usd(c.tracked ?? 0)}** so far in ${c.month ?? "this month"}, past Cloud Free's $10,000. Your apps keep working either way. Standard is the plan for apps your size.`,
+      `${hi(c)} your apps tracked **${usd(c.overTracked ?? 0)}** in ${c.overMonth ?? "a month"}, past Cloud Free's $10,000. Your apps keep working either way. Standard is the plan for apps your size.`,
       c.bills
-        ? `On the ${usd(c.tracked ?? 0)} so far, your Standard bill would be **${usd(c.bills.revenuedot)}**. For comparison, RevenueCat would charge ${usd(c.bills.revenuecat)}. Billing starts on the 1st of next month, with no proration.`
+        ? `On ${usd(c.overTracked ?? 0)} a month, your Standard bill would be **${usd(c.bills.revenuedot)}**. For comparison, RevenueCat would charge ${usd(c.bills.revenuecat)}. Billing starts on the 1st of next month, with no proration.`
         : "Standard is 0.5% of the revenue above $10,000, never more than $999 a month. Billing starts on the 1st of next month, with no proration.",
     ],
     button: { label: "Upgrade to Standard", url: `${c.app}/account/billing` },
@@ -573,7 +577,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     preheader: "If checkout or invoices are in the way, reply and I'll sort it out.",
     paragraphs: [
       hi(c),
-      `Your apps passed $10,000 in tracked revenue this month (${usd(c.tracked ?? 0)} so far). Congratulations, that's a real milestone.`,
+      `Your apps passed $10,000 in tracked revenue in ${c.overMonth ?? "a recent month"} (${usd(c.overTracked ?? 0)}). Congratulations, that's a real milestone.`,
       "Is anything stopping you from moving to Cloud Standard? If something about checkout or invoices is in the way, reply and I'll sort it out.",
       `[Upgrade here](${c.app}/account/billing) when you're ready.`,
     ],
@@ -610,7 +614,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     preheader: "Thank you for sharing your link.",
     paragraphs: [
       hi(c),
-      "Someone just created a RevenueDot account with your link. Thank you for sharing it: most developers find us through a friend.",
+      "Someone just created a RevenueDot account with your link. Thank you for sharing it.",
       "I'll make sure they get set up well. If they're moving from RevenueCat, tell them they can reply to any of my emails and I'll help.",
     ],
   }),
@@ -742,7 +746,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
     ...(m.steps?.length ? [""] : []),
     ...(m.bullets ?? []).map((x) => `- ${t(x)}`),
     ...(m.bullets?.length ? [""] : []),
-    ...(m.code ? [`${m.code.label}:`, `    ${m.code.text}`, ""] : []),
+    ...(m.code ? [`${m.code.label}:`, ...m.code.text.split("\n").map((l) => `    ${l}`), ""] : []),
     ...(m.table ? [...m.table.rows.map((r) => `${r[0]}: ${r[1]}${r[2] ? ` / ${r[2]}` : ""}`), ...(m.table.note ? [t(m.table.note)] : []), ""] : []),
     ...(m.after ?? []).flatMap((x) => [t(x), ""]),
     ...(m.video && VIDEOS[m.video].ready ? [`Watch: ${VIDEOS[m.video].title} (${VIDEOS[m.video].length}): ${tag(videoUrl(m.video), s)}`, ""] : []),
