@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte, or, type SQLWrapper } from "drizzle-orm";
 import { expirationReasonOf } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { recordEvent } from "./events.js";
@@ -15,6 +15,8 @@ import { processExports } from "./archive/export.js";
 import { dbStore } from "./archive/store.js";
 import { processServerMoves } from "./archive/server-move.js";
 import { runBilling, runGate } from "./billing/meter.js";
+import { pausedEvent, pausedProject } from "./billing/gate.js";
+import { stripeProblem } from "./billing/stripe.js";
 import { runAlerts } from "./alerts.js";
 import { runAccountNotifications } from "./account-notifications.js";
 import { runJourneys } from "./journeys.js";
@@ -119,12 +121,15 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }); } catch (e) { console.error("tick: consumption information retries failed", e); }
   }
   // Cloud's go-live gate holds production deliveries of paused accounts and sends held ones once Pro starts, before anything
-  // goes out. Request-kicked runs (liveGate without the cloud edition) only hold and release; the cron does the rest.
+  // goes out. Request-kicked runs (liveGate without the cloud edition) only hold; the cron does the rest. The senders also
+  // skip a paused account's deliveries, so one queued while this run sends is never sent before a run holds it.
   let gate = 0;
-  if (opts.edition === "cloud" || opts.liveGate) {
+  const gated = (opts.edition === "cloud" || opts.liveGate === true) && !stripeProblem(opts.billing);
+  if (gated) {
     try { gate = await runGate({ db, now, mailer: opts.mailer, publicUrl: opts.publicUrl, config: opts.billing ?? null, holdOnly: opts.edition !== "cloud" }); } catch (e) { console.error("tick: go-live gate failed", e); }
   }
-  const sent = await deliverDue(db, fetchImpl, now, 50, 20_000, opts.signal);
+  const skip = gated ? (eventId: SQLWrapper) => pausedEvent(eventId, now) : undefined;
+  const sent = await deliverDue(db, fetchImpl, now, 50, 20_000, opts.signal, skip);
   // Draining (SIGTERM): the long steps below (integrations, exports, AdMob, full exports and moves) wait for the next run.
   const draining = () => opts.signal?.aborted === true;
   // A bad REVENUEDOT_ENCRYPTION_KEY leaves deliveries and exports queued (not failed) until the key is fixed.
@@ -132,7 +137,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   let integrations = 0;
   if (secretKey.ok && !draining()) {
     try {
-      integrations = await deliverDueIntegrations(db, { fetch: fetchImpl, now, secretKey: secretKey.k, publicUrl: opts.publicUrl, strictUrls: opts.strictUrls });
+      integrations = await deliverDueIntegrations(db, { fetch: fetchImpl, now, secretKey: secretKey.k, publicUrl: opts.publicUrl, strictUrls: opts.strictUrls, skip });
     } catch (e) {
       console.error("tick: integration deliveries failed", e);
     }
@@ -180,7 +185,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   let exports = 0;
   if (opts.exports !== false && secretKey.ok && !draining()) {
     try {
-      await queueDueExports(db, now);
+      await queueDueExports(db, now, gated ? (projectId: SQLWrapper) => pausedProject(projectId, now) : undefined);
       // Email exports keep their files where full-export archives go, and sign the download links with the same keys.
       const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
       const store = opts.archiveStore ?? dbStore(db);

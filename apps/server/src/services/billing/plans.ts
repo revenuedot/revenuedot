@@ -13,7 +13,8 @@ export type PlanId = "pro" | "enterprise";
 export type AccountPlan = PlanId | "none";
 
 export interface Plan {
-  id: PlanId;
+  /** A plan's id; "none" only on NO_PLAN, which is never listed or sold. */
+  id: AccountPlan;
   name: string;
   price_label: string;
   description: string;
@@ -45,7 +46,7 @@ export const PRO_EE_FEATURES = ["organizations", "custom_roles", "sso"];
 /** Pro, and accounts with no plan, keep audit log entries this many days. */
 export const CLOUD_AUDIT_LOG_DAYS = 90;
 
-export const DEFAULT_PLANS: Plan[] = [
+export const DEFAULT_PLANS: (Plan & { id: PlanId })[] = [
   {
     id: "pro", name: "Pro", price_label: "$0 until $10K a month", description: "$0 until your apps make $10,000 a month, then 0.5% of revenue above $10,000, never more than $999 a month. The rate never rises.",
     free_up_to_usd: 10_000, rate: 0.005, cap_usd: 999, limit_usd: 1_000_000, self_serve: true,
@@ -65,7 +66,7 @@ export const DEFAULT_PLANS: Plan[] = [
  * and never sold: it is the build stage before Pro.
  */
 export const NO_PLAN: Plan = {
-  id: "pro", name: "No plan", price_label: "$0", description: "Building and testing are free. Start Pro to go live.",
+  id: "none", name: "No plan", price_label: "$0", description: "Building and testing are free. Start Pro to go live.",
   free_up_to_usd: 10_000, rate: 0, cap_usd: 0, limit_usd: null, self_serve: false, includes: [], ee_features: [], audit_log_days: CLOUD_AUDIT_LOG_DAYS, features: { sla: false },
 };
 
@@ -108,7 +109,7 @@ export const planOf = (plans: Plan[], id: string | null | undefined): Plan => {
  * amount times the rate, rounded to the cent, then capped. Enterprise is billed by contract (0 here).
  */
 export function billCents(plan: Plan, trackedUsd: number): number {
-  if (plan.id === "enterprise" || plan === NO_PLAN || plan.rate <= 0) return 0;
+  if (plan.id !== "pro" || plan.rate <= 0) return 0;
   const tracked = Math.round(Math.max(0, trackedUsd) * 100);
   const over = Math.max(0, tracked - Math.round(plan.free_up_to_usd * 100));
   const bill = Math.round(over * plan.rate);

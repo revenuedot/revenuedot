@@ -154,7 +154,8 @@ export function extensionRoutes(r: V2Router, deps: Deps) {
     const conds = [eq(D.webhookId, w.id)];
     const status = c.req.query("status");
     if (status) {
-      if (!["pending", "delivered", "failed"].includes(status)) throw paramError("status must be pending, delivered or failed.", "status");
+      // "held": Cloud's go-live gate keeps it until the project owner starts Pro (services/billing/gate.ts).
+      if (!["pending", "delivered", "failed", "held"].includes(status)) throw paramError("status must be pending, delivered, failed or held.", "status");
       // A delivery being sent right now ("sending", claimed by a job run) is still pending to the API.
       conds.push(status === "pending" ? inArray(D.status, ["pending", "sending"]) : eq(D.status, status));
     }

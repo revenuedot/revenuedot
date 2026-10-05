@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQLWrapper } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
 import { trySend, type Mailer } from "../../mail/index.js";
 import { billingLiveEmail } from "../../mail/templates.js";
@@ -71,10 +71,13 @@ export const EXISTING_GRACE_DAYS = 30;
  */
 export async function markLive(db: DB, now: Date): Promise<string[]> {
   const kinds = sql.join(PAID_KINDS.map((k) => sql`${k}`), sql`, `);
+  // Only owners not live yet, and per project only its first live sale (an index walk on (project_id, created_at)): a
+  // join of every transaction would read the whole table every 10 minutes.
   const owners = rowsOf<{ owner: string; first: Date | string }>(await db.execute(sql`
-    SELECT p.owner_user_id AS owner, min(t.created_at) AS first FROM projects p
-    JOIN transactions t ON t.project_id = p.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0
-      AND t.kind IN (${kinds}) AND t.created_at >= coalesce(p.moved_in_at, '-infinity'::timestamptz)
+    SELECT p.owner_user_id AS owner, min(f.created_at) AS first FROM projects p
+    CROSS JOIN LATERAL (SELECT t.created_at FROM transactions t WHERE t.project_id = p.id
+      AND t.created_at >= coalesce(p.moved_in_at, '-infinity'::timestamptz) AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0
+      AND t.kind IN (${kinds}) ORDER BY t.created_at LIMIT 1) f
     WHERE p.owner_user_id IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM billing_accounts b WHERE b.user_id = p.owner_user_id AND b.live_at IS NOT NULL)
     GROUP BY p.owner_user_id`));
@@ -93,28 +96,42 @@ export async function markLive(db: DB, now: Date): Promise<string[]> {
 const pausedOwners = (now: Date) => sql`(SELECT b.user_id FROM billing_accounts b WHERE b.plan NOT IN ('pro', 'standard', 'enterprise') AND b.grace_ends_at IS NOT NULL AND b.grace_ends_at <= ${now.toISOString()}::timestamptz)`;
 
 /**
- * Holds production deliveries of paused projects, sends held ones whose project is no longer paused (oldest first: they
- * keep their order), and fails held ones older than 30 days. Runs every tick before deliveries go out.
+ * True for a delivery whose event a paused account must not send: a production event (not a TEST the developer sent to
+ * check the endpoint) of a project whose owner is paused. holdAndRelease holds these; the senders skip them too, so one
+ * queued after this run's hold (by a request, while another run is sending) never goes out.
  */
-export async function holdAndRelease(db: DB, now: Date): Promise<{ held: number; released: number; expired: number }> {
-  const iso = now.toISOString();
+export const pausedEvent = (eventId: SQLWrapper, now: Date) => sql`EXISTS (SELECT 1 FROM events e JOIN projects p ON p.id = e.project_id
+  WHERE e.id = ${eventId} AND e.environment = 'production' AND e.type <> 'TEST' AND p.owner_user_id IN ${pausedOwners(now)})`;
+
+/** True for a project whose owner is paused: its scheduled exports of live data wait for Pro (exports/run.ts). */
+export const pausedProject = (projectId: SQLWrapper, now: Date) => sql`${projectId} IN (SELECT p.id FROM projects p WHERE p.owner_user_id IN ${pausedOwners(now)})`;
+
+/**
+ * Holds production deliveries of paused projects; with `release`, also sends held ones whose project is no longer paused
+ * (oldest first: each goes back to the queue at the time it was created, ahead of anything newer) and fails held ones
+ * older than 30 days. The cron runs all three every minute before deliveries go out; a request-kicked run only holds.
+ */
+export async function holdAndRelease(db: DB, now: Date, o: { release?: boolean } = {}): Promise<{ held: number; released: number; expired: number }> {
   const oldest = new Date(now.getTime() - HOLD_DAYS * DAY).toISOString();
   const paused = pausedOwners(now);
   const count = (r: unknown) => rowsOf(r).length;
-  const expired = count(await db.execute(sql`UPDATE webhook_deliveries SET status = 'failed', last_error = 'Held for 30 days while the account had no plan, then dropped.' WHERE status = 'held' AND created_at < ${oldest}::timestamptz RETURNING id`))
-    + count(await db.execute(sql`UPDATE integration_deliveries SET status = 'failed', last_error = 'Held for 30 days while the account had no plan, then dropped.' WHERE status = 'held' AND created_at < ${oldest}::timestamptz RETURNING id`));
-  const released = count(await db.execute(sql`UPDATE webhook_deliveries d SET status = 'pending', next_attempt_at = ${iso}::timestamptz
-      FROM webhooks w JOIN projects p ON p.id = w.project_id
-      WHERE d.status = 'held' AND d.webhook_id = w.id AND (p.owner_user_id IS NULL OR p.owner_user_id NOT IN ${paused}) RETURNING d.id`))
-    + count(await db.execute(sql`UPDATE integration_deliveries d SET status = 'pending', next_attempt_at = ${iso}::timestamptz
-      FROM integrations i JOIN projects p ON p.id = i.project_id
-      WHERE d.status = 'held' AND d.integration_id = i.id AND (p.owner_user_id IS NULL OR p.owner_user_id NOT IN ${paused}) RETURNING d.id`));
+  let expired = 0, released = 0;
+  if (o.release !== false) {
+    expired = count(await db.execute(sql`UPDATE webhook_deliveries SET status = 'failed', last_error = 'Held for 30 days while the account had no plan, then dropped.' WHERE status = 'held' AND created_at < ${oldest}::timestamptz RETURNING id`))
+      + count(await db.execute(sql`UPDATE integration_deliveries SET status = 'failed', last_error = 'Held for 30 days while the account had no plan, then dropped.' WHERE status = 'held' AND created_at < ${oldest}::timestamptz RETURNING id`));
+    released = count(await db.execute(sql`UPDATE webhook_deliveries d SET status = 'pending', next_attempt_at = d.created_at, last_error = NULL
+        FROM webhooks w JOIN projects p ON p.id = w.project_id
+        WHERE d.status = 'held' AND d.webhook_id = w.id AND (p.owner_user_id IS NULL OR p.owner_user_id NOT IN ${paused}) RETURNING d.id`))
+      + count(await db.execute(sql`UPDATE integration_deliveries d SET status = 'pending', next_attempt_at = d.created_at, last_error = NULL
+        FROM integrations i JOIN projects p ON p.id = i.project_id
+        WHERE d.status = 'held' AND d.integration_id = i.id AND (p.owner_user_id IS NULL OR p.owner_user_id NOT IN ${paused}) RETURNING d.id`));
+  }
   const held = count(await db.execute(sql`UPDATE webhook_deliveries d SET status = 'held', last_error = 'Held: the project owner has no plan. Start Pro to send it.'
       FROM webhooks w, projects p, events e
-      WHERE d.status = 'pending' AND d.webhook_id = w.id AND p.id = w.project_id AND e.id = d.event_id AND e.environment = 'production' AND p.owner_user_id IN ${paused} RETURNING d.id`))
+      WHERE d.status = 'pending' AND d.webhook_id = w.id AND p.id = w.project_id AND e.id = d.event_id AND e.environment = 'production' AND e.type <> 'TEST' AND p.owner_user_id IN ${paused} RETURNING d.id`))
     + count(await db.execute(sql`UPDATE integration_deliveries d SET status = 'held', last_error = 'Held: the project owner has no plan. Start Pro to send it.'
       FROM integrations i, projects p, events e
-      WHERE d.status = 'pending' AND d.integration_id = i.id AND p.id = i.project_id AND e.id = d.event_id AND e.environment = 'production' AND p.owner_user_id IN ${paused} RETURNING d.id`));
+      WHERE d.status = 'pending' AND d.integration_id = i.id AND p.id = i.project_id AND e.id = d.event_id AND e.environment = 'production' AND e.type <> 'TEST' AND p.owner_user_id IN ${paused} RETURNING d.id`));
   return { held, released, expired };
 }
 
@@ -141,7 +158,9 @@ export async function liveNotices(rt: { db: DB; now: Date; mailer?: Mailer; publ
     if (kind !== "grace") await rt.db.insert(schema.billingNotices).values({ userId: r.userId, key: `live_grace:${tag}`, sentAt: rt.now }).onConflictDoNothing();
     if (kind === "paused") await rt.db.insert(schema.billingNotices).values({ userId: r.userId, key: `live_reminder:${tag}`, sentAt: rt.now }).onConflictDoNothing();
     if (!won) continue;
-    if (await trySend(rt.mailer, { to: r.email, ...billingLiveEmail({ base, kind, graceEndsAt: r.graceEndsAt! }) })) sent++;
+    // 30 days instead of 14: live before the gate shipped (markLive), so "your first live sale" would be wrong.
+    const existing = r.liveAt !== null && ends - r.liveAt.getTime() > GRACE_DAYS * DAY;
+    if (await trySend(rt.mailer, { to: r.email, ...billingLiveEmail({ base, kind, graceEndsAt: r.graceEndsAt!, existing }) })) sent++;
   }
   return sent;
 }

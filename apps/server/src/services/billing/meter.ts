@@ -19,7 +19,7 @@ export { PAID_KINDS };
 const EVERY_MS = 3_600_000;
 
 export interface BillingRuntime { db: DB; now: Date; fetch?: typeof fetch; mailer?: Mailer; publicUrl?: string; config: BillingConfig | null; force?: boolean;
-  /** runGate only: hold and release deliveries, nothing else (the Worker's request-kicked runs). */
+  /** runGate only: hold new deliveries, nothing else (the Worker's request-kicked runs; the cron releases them). */
   holdOnly?: boolean }
 
 /** Tracked revenue of every project in a month: production money, refunds not subtracted, imported and moved-in history left out. */
@@ -86,12 +86,13 @@ async function usageNotices(rt: BillingRuntime, userId: string, plan: Plan, mont
 }
 
 /**
- * The go-live gate's part of a tick (services/billing/gate.ts), every tick and before deliveries go out: holds and sends
- * deliveries; every 10 minutes, marks accounts that went live and sends the gate's emails. Only with Stripe set up.
+ * The go-live gate's part of a tick (services/billing/gate.ts), every tick and before deliveries go out: holds deliveries
+ * of paused accounts; on the cron also sends held ones once Pro starts and, every 10 minutes, marks accounts that went live
+ * and sends the gate's emails. Only with Stripe set up.
  */
 export async function runGate(rt: BillingRuntime): Promise<number> {
   if (stripeProblem(rt.config)) return 0;
-  const r = await holdAndRelease(rt.db, rt.now);
+  const r = await holdAndRelease(rt.db, rt.now, { release: !rt.holdOnly });
   let work = r.held + r.released + r.expired;
   if (rt.holdOnly) return work;
   if (rt.force || await claim(rt.db, `gate:${Math.floor(rt.now.getTime() / 600_000)}`, rt.now)) {

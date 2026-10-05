@@ -8,7 +8,9 @@ import { defaultStores } from "../src/stores/index.js";
 import { memoryMailer } from "../src/mail/index.js";
 import { createSession } from "../src/services/sessions.js";
 import { runGate } from "../src/services/billing/meter.js";
-import { EXISTING_GRACE_DAYS, GATE_SHIPPED, GRACE_DAYS, HOLD_DAYS, gateOf, holdAndRelease, markLive } from "../src/services/billing/gate.js";
+import { EXISTING_GRACE_DAYS, GATE_SHIPPED, GRACE_DAYS, HOLD_DAYS, gateOf, holdAndRelease, liveNotices, markLive, pausedEvent, pausedProject } from "../src/services/billing/gate.js";
+import { deliverDue } from "../src/services/webhooks.js";
+import { queueDueExports } from "../src/services/exports/run.js";
 import { needsPlan } from "../src/routes/v2/live-gate.js";
 import { PRO_CHECKOUT_TEXT, type BillingConfig } from "../src/services/billing/stripe.js";
 import { tick } from "../src/services/tick.js";
@@ -115,7 +117,7 @@ async function startPro() {
 const LIVE_READS: [string, string][] = [
   [`${P}/metrics/overview`, `${P}/metrics/overview?environment=sandbox`],
   [`${P}/charts/revenue`, `${P}/charts/revenue?environment=sandbox`],
-  [`${P}/customers`, `${P}/customers?environment=sandbox`],
+  [`${P}/customer_lists`, `${P}/customer_lists?list=sandbox&environment=sandbox`],
   [`${P}/transactions`, `${P}/transactions?environment=sandbox`],
   [`${P}/integrations/exports`, `${P}/integrations/exports?environment=sandbox`],
 ];
@@ -167,6 +169,10 @@ describe("building: no live sale yet", () => {
     expect(await markLive(h.db, h.now())).toEqual(["usr_1"]);
     const [a] = await h.db.select().from(schema.billingAccounts).where(eq(schema.billingAccounts.userId, "usr_1"));
     expect(a!.graceEndsAt!.getTime()).toBe(h.now().getTime() + EXISTING_GRACE_DAYS * DAY);
+    // Its email says the rule is new, not that a first sale just happened.
+    expect(await liveNotices({ db: h.db, now: h.now(), mailer: mail, publicUrl: "https://app.revenuedot.test" })).toBe(1);
+    expect(mail.sent.map((m) => m.subject)).toEqual(["Live apps on RevenueDot now need Pro, by November 14"]);
+    expect(mail.sent[0]!.text).not.toMatch(/first live sale|just recorded/);
   });
 
   it("a moved-in project's own later sale does make the account live", async () => {
@@ -293,6 +299,11 @@ describe("paused: live data needs Pro, apps keep working", () => {
         expect(r.body).toMatchObject({ object: "error", type: "plan_required", message, upgrade_url: "https://app.revenuedot.app/account/billing" });
         expect((await call("GET", sandbox, auth)).status, sandbox).toBe(200);
       }
+      // A sandbox flag on a read that ignores it would answer with live data, so it stays paused: the customer list, a
+      // list other than Sandbox, the revenue metric (always production), and the `env` spelling no handler reads.
+      for (const path of [`${P}/customers?environment=sandbox`, `${P}/customer_lists?list=all&environment=sandbox`, `${P}/metrics/revenue?start_date=2026-10-01&end_date=2026-10-31&environment=sandbox`, `${P}/metrics/overview?env=sandbox`, `${P}/winback_campaigns?environment=sandbox`]) {
+        expect((await call("GET", path, auth)).status, path).toBe(402);
+      }
       // Writes of live data too: a new scheduled export. A move's full export is never gated (the data can always leave).
       expect((await call("POST", `${P}/integrations/exports`, { ...auth, body: {} })).status).toBe(402);
       expect((await call("GET", `${P}/exports`, auth)).status).not.toBe(402);
@@ -396,6 +407,7 @@ describe("webhooks and integrations of a paused project", () => {
     const list = await call("GET", `${P}/webhooks/wh_1/deliveries`);
     expect(list.status).toBe(200);
     expect(list.body.items.filter((d: { status: string }) => d.status === "held")).toHaveLength(2);
+    expect((await call("GET", `${P}/webhooks/wh_1/deliveries?status=held`)).body.items).toHaveLength(2);
     // A manual retry while paused is held again before it can go out.
     const retry = await call("POST", `${P}/webhooks/wh_1/deliveries/${held!.id}/retry`);
     expect(retry.status).toBeLessThan(300);
@@ -420,7 +432,7 @@ describe("webhooks and integrations of a paused project", () => {
     await tick(h.db, h.now(), outbound, { liveGate: true, billing: config(), accountNotifications: false, archives: false, exports: false });
     expect(hookCalls).toEqual([]);
     expect(await deliveries()).toEqual({ evt_p1: "held" });
-    // A kicked run only holds and releases: no live marking or emails there.
+    // A kicked run only holds: no releases, live marking or emails there.
     expect(mail.sent.map((m) => m.subject)).toEqual([SUBJECT.grace, SUBJECT.paused]);
   });
 
@@ -460,7 +472,54 @@ describe("webhooks and integrations of a paused project", () => {
     expect(await holdAndRelease(h.db, h.now())).toEqual({ held: 0, released: 1, expired: 0 });
     const [released] = await h.db.select().from(schema.integrationDeliveries).where(and(eq(schema.integrationDeliveries.eventId, "e_prod")));
     expect(released).toMatchObject({ status: "pending" });
-    expect(released!.nextAttemptAt.getTime()).toBe(h.now().getTime());
+    // Back in the queue at the time it was created, so it goes out before anything newer.
+    expect(released!.nextAttemptAt.getTime()).toBe(now - 60_000);
+    expect(released!.lastError).toBeNull();
+  });
+
+  it("a delivery queued after a run held the others is not sent by that run, and a TEST the developer sends always goes out", async () => {
+    const event = await setupDeliveries();
+    await pause();
+    // A request queues a live delivery after this run's hold (another run is already sending): the sender skips it.
+    await event("evt_late", "production", new Date(h.now().getTime() - 1000));
+    expect(await deliverDue(h.db, outbound, h.now(), 50, 20_000, undefined, (id) => pausedEvent(id, h.now()))).toBe(0);
+    expect(hookCalls).toEqual([]);
+    // "Send test" checks the endpoint: setup, never held.
+    const test = await call("POST", `${P}/integrations/webhooks/wh_1/test`);
+    expect(test.status).toBe(201);
+    await cloudTick();
+    expect(hookCalls).toHaveLength(1);
+    expect(await deliveries()).toEqual({ evt_late: "held", [test.body.event_id]: "delivered" });
+  });
+
+  it("a request-kicked run only holds; the cron releases, oldest first, ahead of deliveries queued since Pro started", async () => {
+    const event = await setupDeliveries();
+    await pause();
+    await event("evt_p1", "production", new Date(h.now().getTime() - 2000));
+    await cloudTick();
+    expect(await deliveries()).toEqual({ evt_p1: "held" });
+    await h.db.update(schema.billingAccounts).set({ plan: "pro", status: "active" });
+    const kicked = () => tick(h.db, h.now(), outbound, { liveGate: true, billing: config(), accountNotifications: false, archives: false, exports: false });
+    await kicked();
+    expect(await deliveries()).toEqual({ evt_p1: "held" });
+    // A new sale after Pro started is queued before the cron runs: the held one still goes first.
+    h.setNow(new Date(h.now().getTime() + 30_000));
+    await event("evt_p2", "production", new Date(h.now().getTime() - 1000));
+    h.setNow(new Date(h.now().getTime() + 30_000));
+    await cloudTick();
+    expect(hookCalls).toEqual(["evt_p1", "evt_p2"]);
+  });
+
+  it("scheduled exports of a paused project wait for Pro; sandbox-only exports keep running", async () => {
+    await pause();
+    const job = (id: string, environment: string) => ({ id, projectId: "proj1", name: id, destination: "s3", tables: ["transactions"], environment, nextRunAt: new Date(h.now().getTime() - 1000), createdAt: h.now() });
+    await h.db.insert(schema.exportJobs).values([job("exp_live", "both"), job("exp_sandbox", "sandbox")]);
+    const runs = async () => (await h.db.select().from(schema.exportRuns)).map((r) => r.jobId).sort();
+    await queueDueExports(h.db, h.now(), (id) => pausedProject(id, h.now()));
+    expect(await runs()).toEqual(["exp_sandbox"]);
+    await h.db.update(schema.billingAccounts).set({ plan: "pro", status: "active" });
+    await queueDueExports(h.db, h.now(), (id) => pausedProject(id, h.now()));
+    expect(await runs()).toEqual(["exp_live", "exp_sandbox"]);
   });
 });
 
@@ -522,7 +581,32 @@ describe("where the gate never applies", () => {
     const sandbox = q({ environment: "sandbox" });
     expect(needsPlan("GET", ["metrics", "overview"], q(), false)).toBe(true);
     expect(needsPlan("GET", ["metrics", "overview"], sandbox, true)).toBe(false);
-    expect(needsPlan("GET", ["charts", "mrr"], q({ env: "sandbox" }), false)).toBe(false);
+    expect(needsPlan("GET", ["charts", "mrr"], sandbox, false)).toBe(false);
+    // No handler reads `env`, and these ignore `environment`: a sandbox flag would get live data.
+    expect(needsPlan("GET", ["charts", "mrr"], q({ env: "sandbox" }), false)).toBe(true);
+    expect(needsPlan("GET", ["metrics", "revenue"], sandbox, false)).toBe(true);
+    expect(needsPlan("GET", ["customers"], sandbox, true)).toBe(true);
+    expect(needsPlan("GET", ["customer_lists"], sandbox, false)).toBe(true);
+    expect(needsPlan("GET", ["customer_lists", "export"], q({ environment: "sandbox", list: "sandbox" }), false)).toBe(false);
+    expect(needsPlan("GET", ["winback_campaigns"], sandbox, false)).toBe(true);
+    expect(needsPlan("GET", ["benchmarks"], sandbox, false)).toBe(true);
+    // Settings and setup: benchmark sharing, payment recovery's switch, AdMob and reward rules; pausing a win-back campaign.
+    expect(needsPlan("POST", ["benchmarks", "settings"], q(), false)).toBe(false);
+    expect(needsPlan("POST", ["payment_recovery"], q(), false)).toBe(false);
+    expect(needsPlan("GET", ["payment_recovery", "stats"], q(), false)).toBe(true);
+    expect(needsPlan("GET", ["payment_recovery", "stats"], sandbox, false)).toBe(false);
+    expect(needsPlan("POST", ["ads", "admob", "connect"], q(), false)).toBe(false);
+    expect(needsPlan("GET", ["ads", "reward_rules"], q(), false)).toBe(false);
+    expect(needsPlan("GET", ["ads", "overview"], q(), false)).toBe(true);
+    expect(needsPlan("GET", ["ads", "apple_search_ads", "report"], q(), false)).toBe(true);
+    expect(needsPlan("POST", ["winback_campaigns", "wbc_1"], q(), false)).toBe(false);
+    expect(needsPlan("DELETE", ["winback_campaigns", "wbc_1"], q(), false)).toBe(false);
+    expect(needsPlan("POST", ["winback_campaigns"], q(), false)).toBe(true);
+    expect(needsPlan("POST", ["winback_campaigns", "wbc_1", "actions", "run"], q(), false)).toBe(true);
+    // A backend looks a subscription or purchase up by its store identifier: one record, like a customer read.
+    expect(needsPlan("GET", ["subscriptions"], q(), true)).toBe(false);
+    expect(needsPlan("GET", ["purchases"], q(), true)).toBe(false);
+    expect(needsPlan("GET", ["subscriptions"], q(), false)).toBe(true);
     expect(needsPlan("POST", ["exports"], q(), false)).toBe(false);
     expect(needsPlan("POST", ["integrations", "exports"], sandbox, false)).toBe(true);
     expect(needsPlan("GET", ["ai"], q(), false)).toBe(false);

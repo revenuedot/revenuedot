@@ -115,8 +115,9 @@ export function Customers() {
     refetchInterval: (query) => pollWhileCounting(query.state.data?.summary.is_counting),
     queryFn: () => api<ListResp>(`${v2(pid)}/customer_lists?${params(true)}`) });
   // A whole store transaction ID (or alias) that the list search does not cover: RevenueCat's exact search.
-  const exact = useQuery({ queryKey: ["customer-exact", pid, q], enabled: !!q && res.data?.items.length === 0 && !after,
-    queryFn: async () => (await api<List<Customer>>(`${v2(pid)}/customers?search=${encodeURIComponent(q)}&limit=1${sbx ? `&${sbx}` : ""}`)).items[0] ?? null });
+  // Searches every customer, so a paused account's sandbox list gets 402 here: it then just finds nothing (never the panel).
+  const exact = useQuery({ queryKey: ["customer-exact", pid, q], enabled: !!q && res.data?.items.length === 0 && !after, meta: { gate: "ignore" },
+    queryFn: async () => (await api<List<Customer>>(`${v2(pid)}/customers?search=${encodeURIComponent(q)}&limit=1`)).items[0] ?? null });
 
   const setParams = (patch: Record<string, string | null>) => {
     const n = new URLSearchParams(sp);

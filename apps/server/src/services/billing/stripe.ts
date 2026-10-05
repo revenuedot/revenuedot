@@ -28,7 +28,7 @@ export function billingConfigFromEnv(env: Record<string, string | undefined>): B
   const secretKey = env.REVENUEDOT_BILLING_STRIPE_SECRET_KEY?.trim();
   if (!secretKey) return env.REVENUEDOT_BILLING_PLANS ? { secretKey: "", webhookSecret: "", pricePro: "", meterEvent: DEFAULT_METER_EVENT, live: false, plansJson: env.REVENUEDOT_BILLING_PLANS } : undefined;
   return {
-    secretKey, webhookSecret: env.REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET?.trim() ?? "", pricePro: (env.REVENUEDOT_BILLING_PRICE_PRO ?? env.REVENUEDOT_BILLING_PRICE_STANDARD)?.trim() ?? "",
+    secretKey, webhookSecret: env.REVENUEDOT_BILLING_STRIPE_WEBHOOK_SECRET?.trim() ?? "", pricePro: (env.REVENUEDOT_BILLING_PRICE_PRO?.trim() || env.REVENUEDOT_BILLING_PRICE_STANDARD?.trim()) ?? "",
     meterEvent: env.REVENUEDOT_BILLING_METER_EVENT?.trim() || DEFAULT_METER_EVENT, live: env.REVENUEDOT_BILLING_LIVE === "true", plansJson: env.REVENUEDOT_BILLING_PLANS,
   };
 }

@@ -370,11 +370,13 @@ export function billingUsageEmail(o: { base: string; kind: "cap" | "ceiling_80" 
  * The go-live gate (services/billing/gate.ts): the first live sale of an account with no plan, a reminder two days before
  * its 14 days end, and the pause. Plain ASCII, one button.
  */
-export function billingLiveEmail(o: { base: string; kind: "grace" | "reminder" | "paused"; graceEndsAt: Date }): Rendered {
+export function billingLiveEmail(o: { base: string; kind: "grace" | "reminder" | "paused"; graceEndsAt: Date; existing?: boolean }): Rendered {
   const date = o.graceEndsAt.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
   const price = "Pro costs $0 until your apps make $10,000 a month, then 0.5% of revenue above that, never more than $999 a month.";
   const t = {
     grace: { subject: "RevenueDot recorded your first live sale", heading: "Your app is live on RevenueDot", body: [`RevenueDot just recorded a live purchase in your app. Start Pro by ${date} to keep live charts, customer data and webhooks running.`, price], button: "Start Pro" },
+    // An account that was already live when the gate shipped: its sales are not new, the rule is (30 days' notice).
+    ...(o.existing ? { grace: { subject: `Live apps on RevenueDot now need Pro, by ${date}`, heading: "Live apps now start Pro", body: [`Your apps already sell through RevenueDot. From now on, apps with live purchases need Pro: start it by ${date} to keep live charts, customer data and webhooks running. Your app keeps working and every purchase still unlocks.`, price], button: "Start Pro" } } : {}),
     reminder: { subject: `Start Pro by ${date} to keep your live data`, heading: `Two days left to start Pro`, body: [`On ${date}, live charts, customer data and webhooks pause for accounts without a plan. Your app keeps working and every purchase still unlocks.`, price], button: "Start Pro" },
     paused: { subject: "Your live data and webhooks are paused", heading: "Live data is paused", body: ["Your account has no plan, so live charts, customer data and exports are paused, and webhooks for live purchases are held. Your app still works and every purchase still unlocks.", `Start Pro to see your data again and send the held webhooks. ${price}`], button: "Start Pro" },
   }[o.kind];

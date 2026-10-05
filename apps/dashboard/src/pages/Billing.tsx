@@ -71,8 +71,11 @@ function StateCard({ b, stage, busy, portal }: { b: Billing; stage: Stage; busy:
   const date = fmt.date(b.gate.grace_ends_at);
   const start = <StartPro disabled={!b.stripe_ready} />;
   const msg: Record<Stage, { label: ReactNode; title: string; text: ReactNode; action: ReactNode }> = {
-    building: { label: "Building", title: "Building and testing are free",
-      text: "Start Pro before you release your app: it costs $0 until your apps make $10,000 a month. Sandbox and Test Store purchases never count.", action: start },
+    building: b.usage.projects.length ? { label: "Building", title: "Building and testing are free",
+      text: "Start Pro before you release your app: it costs $0 until your apps make $10,000 a month. Sandbox and Test Store purchases never count.", action: start }
+      // A teammate who owns no project: each project's owner starts Pro for it, so there is nothing to start here.
+      : { label: "No projects of your own", title: "Building and testing are free",
+        text: "Pro is started by the owner of each project. The projects you work on follow their owner's plan; projects you create are billed here.", action: null },
     grace: { label: <>Live{left !== null && <> · {left} day{left === 1 ? "" : "s"} left</>}</>, title: "Your app is live",
       text: <>Start Pro by <b>{date}</b> to keep live charts, customer data and webhooks running. It costs $0 until your apps make $10,000 a month.</>, action: start },
     paused: { label: "Paused", title: "Live data and webhooks are paused",
