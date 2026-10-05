@@ -1,4 +1,5 @@
 import { SignJWT, importPKCS8 } from "jose";
+import { assertStoreSecretsOpened } from "../../services/store-secrets.js";
 import { Codes, RCError } from "../../errors.js";
 import type { AppRow } from "../types.js";
 
@@ -17,11 +18,12 @@ const MESSAGING_HOSTS: Record<AppleEnv, string> = {
 const TIMEOUT_MS = 15_000;
 const MAX_HISTORY_PAGES = 50;
 
-/** The app's In-App Purchase key for the App Store Server API, stored in `apps.credentials`. */
+/** The app's In-App Purchase key for the App Store Server API: ids in `apps.credentials`, the .p8 sealed in `apps.secrets` (opened with withStoreSecrets). */
 export interface AppleCredentials { keyId: string; issuerId: string; privateKey: string; bundleId: string }
 
 /** Returns the credentials, null when none are configured, and throws 7234 when they are only partly filled in. */
 export function appleCredentials(app: AppRow): AppleCredentials | null {
+  assertStoreSecretsOpened(app, ["subscription_private_key", "private_key"]);
   const c = app.credentials ?? {};
   // RevenueCat's field names (what the REST API stores) win over the short names.
   const str = (...keys: string[]) => { for (const k of keys) { const v = c[k]; if (typeof v === "string" && v.trim()) return v; } return ""; };

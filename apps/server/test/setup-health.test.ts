@@ -61,7 +61,8 @@ describe("Google Play credentials count as configured under every field the Play
   it("service_account (object or JSON text) and play_service_account_credentials_json are configured everywhere: setup health, the app, store settings", async () => {
     e = await env(keys);
     const app = async () => (await (await e.call("/v2/projects/proj1/apps/app_play", { key: e.h.ids.secretKey })).json()).play_store;
-    const set = (credentials: Record<string, unknown>) => e.h.db.update(schema.apps).set({ credentials }).where(eq(schema.apps.id, "app_play"));
+    // Plain values in credentials (saved before sealing) still count until the backfill seals them.
+    const set = (credentials: Record<string, unknown>) => e.h.db.update(schema.apps).set({ credentials, secrets: null, secretHints: {} }).where(eq(schema.apps.id, "app_play"));
     // google-helpers saves the service account as an object under `service_account`, which the adapter verifies purchases with.
     e.g.subs.set("tok_pro_1", sub({ start: T0, expiry: MONTH_END, order: "GPA.1" }));
     expect((await e.receipt({ app_user_id: "u", fetch_token: "tok_pro_1", product_ids: ["pro"], platform_product_ids: [{ product_id: "pro", base_plan_id: "monthly" }] })).status).toBe(200);

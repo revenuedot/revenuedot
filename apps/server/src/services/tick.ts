@@ -24,6 +24,7 @@ import { runPaymentRecovery } from "./payment-recovery.js";
 import type { StripeConnectConfig } from "./stripe-connect-config.js";
 import { recheckDueCredentials } from "./credential-health.js";
 import { refreshDueStorePrices } from "./store-prices.js";
+import { sealStoredSecrets } from "./seal-backfill.js";
 import type { Deps } from "../context.js";
 import { ensureFirstSaleCards } from "./assistant/first-sale.js";
 import { pruneStreams } from "./assistant/store.js";
@@ -95,11 +96,17 @@ export interface TickOptions {
 
 export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: TickOptions = {}) {
   const expired = await recordDueExpirations(db, now);
-  const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl);
+  // One-time backfill (migration 0041): plain store secrets are sealed in place, and values of an older key re-sealed.
+  // Only an error code is logged: a database error can quote the value it was given.
+  let secretsSealed = 0;
+  try { const r = await sealStoredSecrets({ db, now: () => now, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey, columns: (opts.extensions ?? []).flatMap((x) => x.sealedColumns?.() ?? []) }); secretsSealed = r.moved + r.resealed; } catch (e) {
+    console.error(`tick: secrets backfill failed (${(e as { code?: string })?.code ?? (e instanceof Error ? e.name : "error")})`);
+  }
+  const voided = await scanDueVoidedPurchases(db, now, opts.stores ?? {}, fetchImpl, { encryptionKey: opts.encryptionKey, signingKey: opts.signingKey });
   // Refund Control answers that failed for a passing reason, inside Apple's 12-hour window.
   let consumption = 0;
   if (opts.consumption !== false) {
-    try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now }); } catch (e) { console.error("tick: consumption information retries failed", e); }
+    try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }); } catch (e) { console.error("tick: consumption information retries failed", e); }
   }
   const sent = await deliverDue(db, fetchImpl, now, 50, 20_000, opts.signal);
   // Draining (SIGTERM): the long steps below (integrations, exports, AdMob, full exports and moves) wait for the next run.
@@ -118,7 +125,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   let storePrices = 0;
   // Store prices call App Store Connect and Google Play: a long step, skipped while draining like the others.
   if (opts.storePrices && !draining()) {
-    try { storePrices = await refreshDueStorePrices({ db, now: () => now, stores: opts.stores ?? {}, fetch: fetchImpl } as Deps); } catch (e) { console.error("tick: store prices failed", e); }
+    try { storePrices = await refreshDueStorePrices({ db, now: () => now, stores: opts.stores ?? {}, fetch: fetchImpl, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey } as Deps); } catch (e) { console.error("tick: store prices failed", e); }
   }
   const alerts = await runAlerts({ db, mailer: opts.mailer, publicUrl: opts.publicUrl }, now);
   // Account notification emails (weekly summary, experiment results, revenue anomalies): bounded per tick, idempotent.
@@ -201,7 +208,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

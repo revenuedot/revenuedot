@@ -64,6 +64,7 @@ const expectTypes = {
   "/add-in-app-purchases": ["Organization", "WebPage", "HowTo", "FAQPage", "BreadcrumbList"],
   "/do-i-need-revenuecat": ["Organization", "WebPage", "FAQPage", "BreadcrumbList"],
   "/cheaper-revenuecat-alternatives": ["Organization", "WebPage", "HowTo", "FAQPage", "BreadcrumbList"],
+  "/revenuecat-mcp": ["Organization", "WebPage", "HowTo", "FAQPage", "BreadcrumbList"],
 };
 const typesFor = (route) =>
   expectTypes[route] ??

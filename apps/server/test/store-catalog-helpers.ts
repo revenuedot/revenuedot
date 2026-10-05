@@ -9,6 +9,7 @@ import { defaultStores } from "../src/stores/index.js";
 import { createAppleStore } from "../src/stores/apple/index.js";
 import { createGoogleStore } from "../src/stores/google/index.js";
 import { FakeAppStoreConnect, FakePlayConsole } from "../../../packages/contract/src/fake-store-catalog.js";
+import { sealedColumns, TEST_ENCRYPTION_KEY } from "./store-secret-helpers.js";
 
 export const IOS_BUNDLE = "com.example.focus";
 export const PLAY_PACKAGE = "com.example.focus.android";
@@ -26,7 +27,7 @@ export async function storeCatalogServer(o: { seed?: boolean } = {}) {
     if (url.startsWith("https://oauth2.googleapis.com/") || url.startsWith("https://androidpublisher.googleapis.com/")) return play.fetch(input, init);
     throw new Error(`unexpected fetch ${url}`);
   };
-  const s = await accountServer({ stores: { ...defaultStores(), app_store: createAppleStore({ fetch: route }), play_store: createGoogleStore({ fetch: route }) }, fetch: route });
+  const s = await accountServer({ stores: { ...defaultStores(), app_store: createAppleStore({ fetch: route }), play_store: createGoogleStore({ fetch: route }) }, fetch: route, encryptionKey: TEST_ENCRYPTION_KEY });
   asc.now = s.now;
   const admin = await s.signup("kai@example.com", { name: "Kai" });
   const pid = admin.projectId!;
@@ -36,8 +37,9 @@ export async function storeCatalogServer(o: { seed?: boolean } = {}) {
   const ascCredentials = { app_store_connect_api_key: p8, app_store_connect_api_key_id: ASC_KEY_ID, app_store_connect_api_key_issuer: "57246542-96fe-1a63-e053-0824d011072a" };
   const sa = { ...keys.sa, client_email: PLAY_EMAIL };
   await s.db.insert(schema.apps).values([
-    { id: "app_ios", projectId: pid, name: "Focus iOS", type: "app_store", bundleId: IOS_BUNDLE, publicKey: "appl_focus", credentials: ascCredentials },
-    { id: "app_play", projectId: pid, name: "Focus Android", type: "play_store", bundleId: PLAY_PACKAGE, publicKey: "goog_focus", credentials: { service_account: JSON.stringify(sa) } },
+    // Store keys sealed the way the API stores them (services/store-secrets.ts).
+    { id: "app_ios", projectId: pid, name: "Focus iOS", type: "app_store", bundleId: IOS_BUNDLE, publicKey: "appl_focus", ...(await sealedColumns("app_store", ascCredentials)) },
+    { id: "app_play", projectId: pid, name: "Focus Android", type: "play_store", bundleId: PLAY_PACKAGE, publicKey: "goog_focus", ...(await sealedColumns("play_store", { service_account: JSON.stringify(sa) })) },
     { id: "app_iap_only", projectId: pid, name: "Focus iOS (IAP key)", type: "app_store", bundleId: IOS_BUNDLE, publicKey: "appl_iaponly", credentials: { subscription_key_id: "IAPKEY0001", subscription_key: p8, subscription_key_issuer: "57246542-96fe-1a63-e053-0824d011072a" } },
     { id: "app_ts", projectId: pid, name: "Test Store", type: "test_store", publicKey: "test_focus" },
   ]);

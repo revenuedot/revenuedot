@@ -105,6 +105,37 @@ The response-signing root key is the secret `REVENUEDOT_SIGNING_KEY` (public key
 `gXdn2hmqR/TbdtQwK02laE0YgFz0Rtf918LICLrgZhg=`). It was uploaded on the first deploy with
 `pnpm deploy:cloud --secrets-file <file>`; later versions keep it. The master copy is kept in the team's password
 manager, not on disk. To rotate it, write a new key to a temp file, pass it with the same flag, then delete the file.
+**Rotate it only after the sealed secrets have moved to their own key (below)**: today they are sealed with a key derived
+from it, and a new signing key alone would make every saved store key and integration token unreadable.
+
+### Sealed secrets and key rotation
+
+Every store secret (the App Store In-App Purchase and App Store Connect `.p8` keys, the Play service account JSON,
+Apple and Amazon shared secrets, Stripe, Paddle, Roku and Galaxy keys), integration and export credentials and two-factor
+secrets are sealed with AES-256-GCM (`apps/server/src/services/secrets.ts`). `apps.credentials` holds only what is not
+secret (key ids, issuer ids, bundle ids). The key is `REVENUEDOT_ENCRYPTION_KEY` when set, else one derived from
+`REVENUEDOT_SIGNING_KEY`; Cloud uses the derived one. Each sealed value starts `v1:<key id>:`, where the key id is the
+first 8 hex characters of the SHA-256 of the raw key. Migration 0041 needs no step: the cron tick moves any plain store
+secret into `apps.secrets` and seals it (`services/seal-backfill.ts`, it logs counts and app ids only).
+
+To rotate the key (or to move Cloud off the derived key before rotating the signing key):
+
+1. Make a key: `openssl rand -base64 32`, saved in 1Password (vault `RevenueDot`). Its id:
+   `printf %s "$NEW" | base64 -d | shasum -a 256 | cut -c1-8`.
+2. Set the Worker secret `REVENUEDOT_ENCRYPTION_KEY` to `NEW,OLD` (new first; leave `OLD` out when moving off the
+   derived key, which stays readable while `REVENUEDOT_SIGNING_KEY` is unchanged):
+   `printf %s "$NEW,$OLD" | cf workers secrets put REVENUEDOT_ENCRYPTION_KEY --worker revenuedot`. The first key seals,
+   every key opens.
+3. Within a few minutes the tick seals every value again with the new key (apps, integrations, data export jobs,
+   two-factor secrets, server moves, archive export and import keys, SSO client secrets). Check read-only on production
+   that nothing is left with another id: run
+   `select count(*) from <table> where <column> like 'v1:%' and split_part(<column>, ':', 2) <> '<new id>'` for
+   `apps.secrets`, `integrations.secrets`, `export_jobs.secrets`, `users.totp_secret`, `project_moves.secrets`,
+   `project_exports.secret_key`, `project_imports.secret_key` and `ee_sso_connections.secret`. All must be 0.
+4. Set the secret to `NEW` alone. Only now may `REVENUEDOT_SIGNING_KEY` be rotated.
+
+A value sealed with a key the server no longer has cannot be opened: the app's Check credentials says so and the
+developer enters the key again. The backfill leaves such rows untouched and logs their ids.
 
 Every AI feature uses the Vercel AI Gateway with `openai/gpt-6-luna` and medium reasoning when the Worker has the secret
 `AI_GATEWAY_API_KEY`: "Generate with AI" on paywalls, funnels' "Build with AI", RevenueDot AI (the assistant and its

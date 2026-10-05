@@ -12,6 +12,8 @@ import { AppStoreServerApi, AppleApiClientError, AppleRateLimitError, appleCrede
 import { expectedBundleId, verifyTransactionJws, xcodeRootsOf } from "../../stores/apple/index.js";
 import { body, conflict, notFound, paramError, scope, type V2Router } from "./common.js";
 import { importPage, type KeyInfo } from "./import-page.js";
+import { withStoreSecretsOrNone } from "../../services/store-secrets.js";
+import { hasServiceAccount } from "../../stores/google/api.js";
 
 /**
  * RevenueDot extensions for migrating from RevenueCat (not part of RevenueCat's API):
@@ -142,7 +144,9 @@ export function importRoutes(r: V2Router, deps: Deps) {
     const b = await body(c, ImportBody);
     const projectId = c.get("projectId");
     const now = deps.now();
-    const apps = new Map((await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId))).map((a) => [a.id, a]));
+    const rows = await db.select().from(schema.apps).where(eq(schema.apps.projectId, projectId));
+    // Store ids are resolved with the apps' sealed keys, opened in memory for this page only.
+    const apps = new Map((b.resolve_store_ids ? await Promise.all(rows.map((a) => withStoreSecretsOrNone(deps, a))) : rows).map((a) => [a.id, a]));
     const products = await db.select().from(schema.products).where(eq(schema.products.projectId, projectId));
     for (const cu of b.customers) {
       for (const s of [...(cu.subscriptions ?? []), ...(cu.purchases ?? [])]) {
@@ -251,10 +255,7 @@ async function resolveStoreKeys(deps: Deps, apps: Map<string, AppRec>, customers
   return out;
 }
 
-const hasGoogleCredentials = (app: AppRec) => {
-  const cr = app.credentials ?? {};
-  return !!(cr.play_service_account_credentials_json || cr.service_account);
-};
+const hasGoogleCredentials = (app: AppRec) => hasServiceAccount(app);
 
 /**
  * Confirms each Apple chain's original_transaction_id with Get Transaction Info. A chain that cannot be confirmed keeps

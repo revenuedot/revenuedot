@@ -23,7 +23,7 @@ import { activeEntitlementKeys, contextFor, resolveOfferings } from "../services
 import { balancesOf } from "../services/virtual-currencies.js";
 import { amazonClientFor, amazonReceiptData } from "../stores/amazon/index.js";
 import { mergeStoredState, rowPrice, subRowOf } from "../stores/rows.js";
-import { withStoreSecrets } from "../services/store-secrets.js";
+import { withStoreSecrets, withStoreSecretsOrNone } from "../services/store-secrets.js";
 import { MAX_BODY_BYTES, storeSdkEvents } from "../services/sdk-events.js";
 import { CheckoutError, redeemWebPurchase, startCheckout } from "../services/web/checkout.js";
 import { domainOf, mailPayBase, payBaseOf } from "../services/web/domains.js";
@@ -229,7 +229,9 @@ export function sdkRoutes(deps: Deps) {
     if (!adapter) throw new RCError(400, Codes.UNSUPPORTED_RECEIPT, `Receipts for ${app.type} apps are not supported yet.`);
     if (!input.fetchToken && !input.appTransaction) throw new RCError(400, Codes.INVALID_RECEIPT, "fetch_token or app_transaction is required.");
     // Amazon and Stripe keys are sealed; the adapter gets them in memory only.
-    const storeApp = await withStoreSecrets(deps, app);
+    // An App Store receipt is verified from Apple's signed transactions without the key, so a key that cannot be opened
+    // never blocks an iOS purchase (the key only adds re-reads). Other stores need their keys.
+    const storeApp = app.type === "app_store" || app.type === "mac_app_store" ? await withStoreSecretsOrNone(deps, app) : await withStoreSecrets(deps, app);
     const verified = input.fetchToken ? await adapter.verify(storeApp, input, await productInfo(deps.db, app.id), {
       storedPeriod: async (store, storeKey) => {
         const row = await subRowOf(deps.db, app.projectId, store, storeKey);
@@ -367,7 +369,7 @@ export function sdkRoutes(deps: Deps) {
     const appUserId = userId(String(b.app_user_id ?? ""));
     const wanted: Array<Record<string, unknown>> = Array.isArray(b.generate_offers) ? b.generate_offers : [];
     if (!wanted.length) throw new RCError(400, Codes.BAD_REQUEST_PARAMS, "generate_offers is required.");
-    const creds = app.type === "app_store" || app.type === "mac_app_store" ? appleCredentials(app) : null;
+    const creds = app.type === "app_store" || app.type === "mac_app_store" ? appleCredentials(await withStoreSecrets(deps, app)) : null;
     if (!creds) throw new RCError(400, Codes.INVALID_APPLE_SUBSCRIPTION_KEY, "Promotional offers need the app's App Store In-App Purchase key. Add it in the app's settings.");
     const sk2 = c.req.header("x-storekit2-enabled") === "true" || c.req.header("x-storekit-version") === "2";
     const token = appAccountTokenFor(appUserId, sk2);

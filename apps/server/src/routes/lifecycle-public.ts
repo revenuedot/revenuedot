@@ -9,6 +9,7 @@ import { markClicked, markOpened, sendByToken, unsubscribe } from "../services/w
 import { caseByCenterToken, caseByToken, destinationFor, emailFor, markClicked as markRecoveryClicked, portalLink, PORTAL_LINK_TTL_MS, sendPortalLink, unsubscribeCase } from "../services/payment-recovery.js";
 import { clientIp } from "../services/rate-limit.js";
 import { publicOrigin } from "./oauth.js";
+import { withStoreSecrets } from "../services/store-secrets.js";
 
 /**
  * Public lifecycle endpoints (no API key): Apple's real-time Retention Messaging call, and the links in win-back emails.
@@ -55,7 +56,7 @@ export function lifecyclePublicRoutes(deps: Deps) {
     const cfg = messagingOf(app);
     let answer: Record<string, unknown> = {};
     // Signing a promotional offer can fail (an incomplete or invalid key): Apple then shows the default message.
-    try { answer = await realtimeAnswer(cfg, req, app, deps.now()); } catch (e) { console.warn(`Retention message for app ${app.id} failed: ${e instanceof Error ? e.message : String(e)}`); }
+    try { answer = await realtimeAnswer(cfg, req, await withStoreSecrets(deps, app), deps.now()); } catch (e) { console.warn(`Retention message for app ${app.id} failed: ${e instanceof Error ? e.message : String(e)}`); }
     const now = deps.now().getTime();
     // The counter is the only write, after the answer.
     const count = db.execute(sql`UPDATE apps SET retention_messaging = jsonb_set(coalesce(retention_messaging, '{}'::jsonb), '{stats}',

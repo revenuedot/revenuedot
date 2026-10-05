@@ -9,7 +9,8 @@ import { GoogleApiError, hasServiceAccount, microsMoney, moneyMicros, type PlayB
 import { googleClientFor } from "../stores/google/index.js";
 import type { AuditActor } from "../routes/v2/audit.js";
 import { writeAudit } from "../routes/v2/audit.js";
-import { StoreOpError } from "./store-ops.js";
+import { openForStore, StoreOpError } from "./store-ops.js";
+import { connectKeySet } from "./store-secrets.js";
 import { listStoreProducts } from "./store-import.js";
 import { decimalMicros, fromConnect, refreshStorePrices, type PricedListing } from "./store-prices.js";
 
@@ -333,7 +334,7 @@ function newProductProblem(kind: "apple" | "play", id: string, p: { type: string
 // ---- Store context --------------------------------------------------------------------------------------------------
 
 function requireCredentials(app: App, kind: "apple" | "play", writing: boolean) {
-  if (kind === "apple" && !connectCredentials(app)) {
+  if (kind === "apple" && !connectKeySet(app)) {
     throw new StoreOpError("credentials", `${writing ? "Changing" : "Reading"} prices in App Store Connect needs the app's App Store Connect API key: a team key with the App Manager role (.p8 file, key ID and issuer ID). The In-App Purchase key cannot list or change prices.`);
   }
   if (kind === "play" && !hasServiceAccount(app)) {
@@ -374,7 +375,8 @@ function fromGoogle(e: unknown): unknown {
 
 // ---- Edits ----------------------------------------------------------------------------------------------------------
 
-export async function exportCsv(deps: Deps, app: App, identifiers: string[] | null) {
+export async function exportCsv(deps: Deps, row: App, identifiers: string[] | null) {
+  const app = await openForStore(deps, row);
   const kind = storeKind(app.type);
   if (!kind) throw new StoreOpError("unsupported", `The product editor works with App Store and Google Play apps; this is a ${app.type} app.`);
   requireCredentials(app, kind, false);
@@ -390,7 +392,8 @@ export async function exportCsv(deps: Deps, app: App, identifiers: string[] | nu
 }
 
 /** Uploads a file: reads the store, validates, and keeps the edit (status `ready`, or `invalid` with its errors). */
-export async function createEdit(deps: Deps, app: App, input: { fileName: string; csv: string; preserveCurrentPrice?: boolean; createdBy: string | null }) {
+export async function createEdit(deps: Deps, row: App, input: { fileName: string; csv: string; preserveCurrentPrice?: boolean; createdBy: string | null }) {
+  const app = await openForStore(deps, row);
   const kind = storeKind(app.type);
   if (!kind) throw new StoreOpError("unsupported", `The product editor works with App Store and Google Play apps; this is a ${app.type} app.`);
   requireCredentials(app, kind, true);
@@ -458,13 +461,13 @@ class OutOfTime extends Error {}
  * share its outcome. Returns the edit after the run; `committing` means rows are left for the next call.
  */
 export async function commitEdit(deps: Deps, edit: EditRow, actor: AuditActor, opts: { budgetMs?: number; retry?: boolean } = {}): Promise<EditRow> {
-  const app = (await deps.db.select().from(schema.apps).where(eq(schema.apps.id, edit.appId)).limit(1))[0];
-  if (!app) throw new StoreOpError("not_found", "The edit's app was deleted.");
-  const kind = storeKind(app.type)!;
+  const row = (await deps.db.select().from(schema.apps).where(eq(schema.apps.id, edit.appId)).limit(1))[0];
+  if (!row) throw new StoreOpError("not_found", "The edit's app was deleted.");
+  const kind = storeKind(row.type)!;
   if (!COMMITTABLE.includes(edit.status)) {
     throw new StoreOpError("conflict", edit.status === "invalid" ? "This file has errors. Fix them and upload it again." : edit.status === "committed" ? "This edit is already committed." : `This edit is ${edit.status} and cannot be committed.`, "status");
   }
-  requireCredentials(app, kind, true);
+  requireCredentials(row, kind, true);
   const now = deps.now();
   const E = schema.productEdits, R = schema.productEditRows;
   // One commit per app at a time: price schedules and Play subscriptions are read, changed and written back whole, so two
@@ -479,6 +482,12 @@ export async function commitEdit(deps: Deps, edit: EditRow, actor: AuditActor, o
     if (!row) throw new StoreOpError("conflict", "This edit is being committed right now. Wait for it to finish.", "locked");
     return row;
   });
+  // The store key is sealed (services/store-secrets.ts); a key this server cannot open releases the lock and fails the call.
+  let app: App;
+  try { app = await openForStore(deps, row); } catch (e) {
+    await deps.db.update(E).set({ status: edit.status, lockedUntil: null, updatedAt: now }).where(eq(E.id, edit.id));
+    throw e;
+  }
   if (opts.retry) await deps.db.update(R).set({ status: "pending", error: null, updatedAt: now }).where(and(eq(R.editId, edit.id), eq(R.status, "failed")));
 
   const started = Date.now();

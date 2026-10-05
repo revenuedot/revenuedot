@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { schema } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
-import { connectCredentials } from "../../stores/apple/connect.js";
+import { connectKeySet } from "../../services/store-secrets.js";
 import { hasServiceAccount } from "../../stores/google/api.js";
 import { StoreOpError } from "../../services/store-ops.js";
 import { PRICE_STORES, cachedListings, refreshStorePrices, type ListingRow, type SyncRow } from "../../services/store-prices.js";
@@ -43,7 +43,7 @@ function editError(e: unknown): unknown {
 export function priceAccess(app: typeof schema.apps.$inferSelect): { can_read_prices: boolean; reason: string | null } {
   if (!PRICE_STORES.has(app.type)) return { can_read_prices: false, reason: app.type === "test_store" ? "Test Store prices are set on each product in RevenueDot." : app.type === "stripe" ? "Stripe prices come with the imported web products." : "This store has no price API RevenueDot reads." };
   if (app.type === "play_store") return hasServiceAccount(app) ? { can_read_prices: true, reason: null } : { can_read_prices: false, reason: "Add the app's Play service account JSON to read and change prices." };
-  if (connectCredentials(app)) return { can_read_prices: true, reason: null };
+  if (connectKeySet(app)) return { can_read_prices: true, reason: null };
   const c = app.credentials ?? {};
   const hasIap = typeof c.subscription_key_id === "string" || typeof c.key_id === "string";
   return {
