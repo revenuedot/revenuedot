@@ -7,7 +7,7 @@ import { encodeCsvChunk, encodeFile, gunzip, gzip, toCsv } from "./files.js";
 import { abortMultipart, putObject, StorageError, type Destination } from "./storage.js";
 import { addChunk, finishUpload, newUpload, stagedBytes, stagingKey, type UploadContext } from "./upload.js";
 import { dbStore } from "../archive/store.js";
-import { COLUMNS, columnsFor, readPage, type ExportTable, type Row, type Window } from "./tables.js";
+import { COLUMNS, columnsFor, PAGE, readPage, type ExportTable, type Row, type Window } from "./tables.js";
 import { emailFileKey, emailJobPrefix, sendExportEmail } from "./email.js";
 import type { ArchiveStore } from "../archive/store.js";
 import type { Mailer } from "../../mail/index.js";
@@ -185,7 +185,7 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
     // Bytes staged for the current single-file chunk, kept in memory between chunks of this tick.
     let held: { table: number; chunk: number; bytes: Uint8Array } | null = null;
     while (progress.table < tables.length) {
-      // Every call writes at least one file, so a run always moves forward however small the budget.
+      // Every call reads or writes something first, so a run always moves forward however small the budget.
       if (moved && Date.now() - started >= budgetMs) {
         // Out of time for this tick: carry on from here in the next one, behind runs that are already waiting.
         await db.update(R).set({ status: "queued", nextAttemptAt: rt.now, progress: { ...progress, pace }, files }).where(eq(R.id, runId));
@@ -215,9 +215,13 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
           // PART_ROWS rows (the file's bytes do not depend on how it was read), but it may be read over several ticks.
           const left = budgetMs - (Date.now() - started);
           const rate = pace.msPerRow;
-          const n = Math.min(PART_ROWS - chunkRows(), rt.pageRows ?? (rate ? Math.max(MIN_PAGE_ROWS, Math.floor((left * 0.6) / rate)) : START_PAGE_ROWS));
-          // The page, then either writing the chunk it completes or keeping the rows for the next tick.
-          const predicted = (rate ?? 0) * n + (chunkRows() + n >= PART_ROWS ? pace.chunkMs ?? 0 : pace.stashMs ?? 0);
+          // After the page: writing the chunk it completes, or, when it does not, keeping the rows for the next tick or
+          // writing the last chunk if the page turns out to end the table.
+          const tail = Math.max(pace.chunkMs ?? 0, pace.stashMs ?? 0);
+          // Never more than PAGE rows: a page also loads every transaction and subscription of its customers.
+          const sized = rate ? Math.min(PAGE, Math.max(MIN_PAGE_ROWS, Math.floor(((left - (moved ? tail : 0)) * 0.6) / rate))) : START_PAGE_ROWS;
+          const n = Math.min(PART_ROWS - chunkRows(), rt.pageRows ?? sized);
+          const predicted = (rate ?? 0) * n + (chunkRows() + n >= PART_ROWS ? pace.chunkMs ?? 0 : tail);
           if (moved && Date.now() - started + predicted > budgetMs) {
             // Not enough time left for this page: keep what was read and carry on in the next tick.
             const seq = (progress.buffered?.seq ?? 0) + 1;
@@ -225,19 +229,21 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
             const stashStarted = Date.now();
             const total = chunkRows();
             if (total) {
-              const bytes = csv ? await gzip(new TextEncoder().encode(carried.text + toCsv(columns, buffer, false))) : new TextEncoder().encode(JSON.stringify(buffer));
-              await store.put(rowsKey(runStaging, progress.table, seq), bytes);
+              await store.put(rowsKey(runStaging, progress.table, seq), await gzip(new TextEncoder().encode(csv ? carried.text + toCsv(columns, buffer, false) : JSON.stringify(buffer))));
             }
             pace.stashMs = Math.max(Date.now() - stashStarted, (pace.stashMs ?? 0) * 0.8);
             progress = { ...progress, cursor, ...(total ? { buffered: { seq, rows: total, ...(csv ? { columns: columns.map(([n]) => n).join(",") } : {}) } } : { buffered: undefined }) };
             await db.update(R).set({ status: "queued", nextAttemptAt: rt.now, progress: { ...progress, pace }, files }).where(eq(R.id, runId));
-            if (old && (old.seq !== seq || !total)) await store.deletePrefix(rowsKey(runStaging, progress.table, old.seq));
+            if (old) await store.deletePrefix(rowsKey(runStaging, progress.table, old.seq));
             return true;
           }
           const t0 = Date.now();
           const page = await readPage(db, job.projectId, table, w, cursor, n);
-          const per = (Date.now() - t0) / Math.max(page.rows.length, 1);
-          pace.msPerRow = rate ? rate * 0.5 + per * 0.5 : per;
+          // An empty page (the end of a table) says nothing about the time per row.
+          if (page.rows.length) {
+            const per = (Date.now() - t0) / page.rows.length;
+            pace.msPerRow = rate ? rate * 0.5 + per * 0.5 : per;
+          }
           buffer.push(...page.rows);
           cursor = page.next;
           first = false;
@@ -344,15 +350,16 @@ export async function runExport(db: DB, runId: string, rt: ExportRuntime, budget
 /** Where a tick keeps the rows it read for an unfinished chunk. */
 const rowsKey = (runStaging: string, table: number, seq: number) => `${runStaging}rows/${table}/${String(seq).padStart(7, "0")}`;
 
-/** Reads what a tick kept for an unfinished chunk: CSV text, or rows with their timestamps as dates again (Parquet). */
+/** Reads what a tick kept for an unfinished chunk (gzip): CSV text, or JSON rows with their timestamps as dates again (Parquet). */
 async function loadCarried(store: ArchiveStore, key: string, table: ExportTable, csv: boolean): Promise<{ text: string; rows: Row[] }> {
   const bytes = await store.get(key);
   if (!bytes) throw new StorageError("Rows read in an earlier tick went missing from RevenueDot's file store. Run the export again.", false);
-  if (csv) return { text: new TextDecoder().decode(await gunzip(bytes)), rows: [] };
+  const text = new TextDecoder().decode(await gunzip(bytes));
+  if (csv) return { text, rows: [] };
   const times = COLUMNS[table].filter(([, t]) => t === "timestamp").map(([n]) => n);
   return {
     text: "",
-    rows: (JSON.parse(new TextDecoder().decode(bytes)) as Row[]).map((r) => {
+    rows: (JSON.parse(text) as Row[]).map((r) => {
       for (const n of times) if (typeof r[n] === "string") r[n] = new Date(r[n] as string);
       return r;
     }),
