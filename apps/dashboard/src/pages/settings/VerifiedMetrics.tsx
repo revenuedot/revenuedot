@@ -255,11 +255,11 @@ function DomainPanel({ pid, s }: { pid: string; s: Settings }) {
         {cd && <>
           <p className="section-sub">Add these two records at your DNS provider, then press Verify. DNS changes can take a few minutes to show.</p>
           <div className="tbl">
-            <table aria-label="DNS records">
+            <table className="vm-dns" aria-label="DNS records">
               <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
               <tbody>{cd.dns.map((r) => (
                 <tr key={r.type}><td className="mono">{r.type}</td>
-                  <td className="id"><span className="hrow">{r.name}<CopyButton value={r.name} label={`Copy ${r.type} name`} /></span></td>
+                  <td className="id"><span className="hrow"><span className="vm-dns-v">{r.name}</span><CopyButton value={r.name} label={`Copy ${r.type} name`} /></span></td>
                   <td className="id"><span className="hrow"><span className="vm-dns-v" title={r.value}>{r.value}</span><CopyButton value={r.value} label={`Copy ${r.type} value`} /></span></td></tr>
               ))}</tbody>
             </table>
