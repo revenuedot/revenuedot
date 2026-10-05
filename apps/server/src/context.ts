@@ -8,6 +8,11 @@ export interface Deps {
   stores: Record<string, StoreAdapter>;
   /** Called after writes that may create webhook deliveries; the tick worker sends them. */
   kick?: () => void;
+  /**
+   * Projects up to this many customers get list cards, audience previews, policy counts and win-back previews counted in
+   * the request; larger ones are counted by the tick (services/customer-counts.ts). Default INLINE_LIMIT (5,000).
+   */
+  countInlineLimit?: number;
   /** HTTP client for outbound calls (webhooks, stores); injectable for tests. */
   fetch?: typeof fetch;
   /** Base64 Ed25519 seed for response signing; falls back to REVENUEDOT_SIGNING_KEY. "" turns signing off. */

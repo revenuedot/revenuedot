@@ -1,17 +1,20 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { schema, type DB } from "@revenuedot/db";
-import { projectContexts, subActive, type LoadedContext } from "./customer-context.js";
+import { contextsFor, projectCatalog, subActive, type LoadedContext } from "./customer-context.js";
+import { exactCount, type ListCountSpec } from "./customer-counts.js";
+import { BUILT_IN_LISTS, filterSql, orderedPage, PAGE_SIZE, SORT_KEYS, type BuiltInList, type SortKey } from "./customer-scan.js";
 import { rulesMatch, type Rules } from "./targeting.js";
 
 /**
  * Customers lists (prd/lifecycle/PRD.md): the built-in lists in the Customers rail, saved audiences, filters from the
- * condition builder, the four summary cards and the CSV export. Lists look at the most recently seen customers (SCAN_LIMIT).
+ * condition builder, the four summary cards and the CSV export, over every customer of the project. Built-in lists,
+ * search and sorting are SQL; audience conditions run on pages of 1,000 contexts (services/customer-scan.ts), and their
+ * card counts come from services/customer-counts.ts.
  */
 
-export const BUILT_IN_LISTS = ["all", "active", "sandbox", "non_subscription", "expired"] as const;
-export type BuiltInList = (typeof BUILT_IN_LISTS)[number];
+export { BUILT_IN_LISTS, SORT_KEYS, type BuiltInList, type SortKey };
 
-const prodSubs = (i: LoadedContext) => i.data.subs.filter((s) => s.store !== "promotional" && !s.isSandbox);
+export const prodSubs = (i: LoadedContext) => i.data.subs.filter((s) => s.store !== "promotional" && !s.isSandbox);
 
 /** Built-in lists: production subscriptions decide Active and Expired; Sandbox is anyone with a sandbox purchase. */
 export function inBuiltIn(list: BuiltInList, i: LoadedContext, now: Date): boolean {
@@ -38,10 +41,18 @@ export interface ListRow {
   country: string | null; platform: string | null;
 }
 
+const ANON = "$RCAnonymousID:";
+/** The ID a row shows: the original app user ID unless anonymous, else the lowest other non-anonymous alias (SQL: customer-scan.ts). */
+export function displayId(original: string, aliases: string[]): string {
+  if (!original.startsWith(ANON)) return original;
+  return aliases.filter((a) => !a.startsWith(ANON)).sort((x, y) => (x < y ? -1 : x > y ? 1 : 0))[0] ?? original;
+}
+
 export function rowOf(i: LoadedContext, now: Date): ListRow {
   const d = i.data;
   const real = d.subs.filter((s) => s.store !== "promotional");
-  const active = real.filter((s) => subActive(s, now)).sort((a, b) => (b.expiresDate?.getTime() ?? Infinity) - (a.expiresDate?.getTime() ?? Infinity));
+  // The active subscription that expires last (none: never), then the highest id: the same one SQL picks (customer-scan.ts).
+  const active = real.filter((s) => subActive(s, now)).sort((a, b) => (b.expiresDate?.getTime() ?? Infinity) - (a.expiresDate?.getTime() ?? Infinity) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
   const lead = active[0];
   let status: ListRow["subscription_status"] = real.length ? "expired" : "none";
   if (lead) {
@@ -53,7 +64,7 @@ export function rowOf(i: LoadedContext, now: Date): ListRow {
     ...d.ones.map((o) => ({ product_id: o.productIdentifier, store: o.store, purchased_at: o.purchaseDate.getTime(), environment: o.isSandbox ? "sandbox" as const : "production" as const })),
   ].sort((a, b) => b.purchased_at - a.purchased_at);
   return {
-    object: "customer_list_row", id: d.aliases.find((a) => !a.startsWith("$RCAnonymousID:")) ?? d.customer.originalAppUserId, customer_uuid: d.customer.id,
+    object: "customer_list_row", id: displayId(d.customer.originalAppUserId, d.aliases), customer_uuid: d.customer.id,
     email: d.attributes.$email ?? null, subscription_status: status,
     auto_renewal_status: lead ? (lead.unsubscribeDetectedAt ? "off" : "on") : null,
     first_seen_at: d.customer.firstSeen.getTime(), last_seen_at: d.customer.lastSeen.getTime(), spent_in_usd: i.ctx.totalSpent,
@@ -61,68 +72,108 @@ export function rowOf(i: LoadedContext, now: Date): ListRow {
   };
 }
 
-export interface ListQuery { list: string; rules?: Rules | null; search?: string | null }
+export interface ListQuery { list: string; rules?: Rules | null; search?: string | null; sort?: SortKey | null; direction?: "asc" | "desc" }
+interface Resolved { q: ListQuery; builtIn: BuiltInList; audienceRules: Rules | null; js: boolean }
 
-/** Every matching customer (newest last seen first), the summary cards, and whether the scan stopped at the limit. */
-export async function queryCustomerList(db: DB, projectId: string, q: ListQuery, now: Date) {
-  let builtIn: BuiltInList = "all";
-  let audienceRules: Rules | null = null;
-  if ((BUILT_IN_LISTS as readonly string[]).includes(q.list)) builtIn = q.list as BuiltInList;
-  else {
-    const [a] = await db.select().from(schema.audiences).where(and(eq(schema.audiences.projectId, projectId), eq(schema.audiences.id, q.list))).limit(1);
-    if (!a) return null;
-    audienceRules = a.rules as Rules;
+/** The list's built-in part and saved audience; null when the audience does not exist. */
+async function resolve(db: DB, projectId: string, q: ListQuery): Promise<Resolved | null> {
+  if ((BUILT_IN_LISTS as readonly string[]).includes(q.list)) return { q, builtIn: q.list as BuiltInList, audienceRules: null, js: !!q.rules };
+  const [a] = await db.select().from(schema.audiences).where(and(eq(schema.audiences.projectId, projectId), eq(schema.audiences.id, q.list))).limit(1);
+  if (!a) return null;
+  return { q, builtIn: "all", audienceRules: a.rules as Rules, js: true };
+}
+
+const matches = (r: Resolved, i: LoadedContext, now: Date) => inBuiltIn(r.builtIn, i, now)
+  && (!r.audienceRules || rulesMatch(i.ctx, r.audienceRules, now.getTime())) && (!r.q.rules || rulesMatch(i.ctx, r.q.rules, now.getTime()));
+
+/** A list page with audience conditions reads at most this many pages (20,000 customers) before it answers. */
+export const LIST_SCAN_PAGES = 20;
+/** The CSV export writes at most this many rows and reads at most EXPORT_SCAN_PAGES pages, inside the Worker's CPU limit. */
+export const EXPORT_MAX_ROWS = 100_000;
+export const EXPORT_SCAN_PAGES = 200;
+
+interface Chunk { rows: ListRow[]; last: string; end: boolean }
+
+/**
+ * Matching rows in list order after customer `after`, up to `limit`, a page at a time. Without audience conditions SQL
+ * picks the rows; with them pages of 1,000 customers are read until enough match or `maxPages` pages were read. Each
+ * chunk says the last customer read (a valid `starting_after`) and whether the list ended. Yields `null` once when
+ * `after` is not in the list.
+ */
+async function* matchingRows(db: DB, projectId: string, r: Resolved, now: Date, after: string | null, limit: number, maxPages: number): AsyncGenerator<Chunk | null> {
+  const catalog = await projectCatalog(db, projectId);
+  const oq = { filter: { list: r.builtIn, search: r.q.search }, sort: r.q.sort ?? null, direction: r.q.direction };
+  let cursor = after, left = limit;
+  for (let p = 0; left > 0 && p < maxPages; p++) {
+    const size = r.js ? PAGE_SIZE : Math.min(left, PAGE_SIZE);
+    const page = await orderedPage(db, projectId, now, oq, cursor, size);
+    if (!page) { if (cursor === after) yield null; return; }
+    if (!page.length) { yield { rows: [], last: cursor ?? "", end: true }; return; }
+    const ctxs = await contextsFor(db, projectId, page, now, catalog);
+    const rows = ctxs.filter((i) => !r.js || matches(r, i, now)).slice(0, left).map((i) => rowOf(i, now));
+    left -= rows.length;
+    cursor = page[page.length - 1]!.id;
+    const end = page.length < size;
+    yield { rows, last: cursor, end };
+    if (end) return;
   }
-  const { items, truncated } = await projectContexts(db, projectId, now);
-  const s = q.search?.trim().toLowerCase();
-  const t = now.getTime();
-  const matched = items.filter((i) => inBuiltIn(builtIn, i, now)
-    && (!audienceRules || rulesMatch(i.ctx, audienceRules, t))
-    && (!q.rules || rulesMatch(i.ctx, q.rules, t))
-    && (!s || i.data.aliases.some((a) => a.toLowerCase().includes(s)) || (i.data.attributes.$email ?? "").toLowerCase().includes(s)));
-  const rows = matched.map((i) => rowOf(i, now));
+}
+
+export interface ListSummary {
+  object: "customer_list_summary"; customers: number; trialing_subscribers: number; paid_subscribers: number; total_revenue_in_usd: number;
+  is_approximate: false; is_counting: boolean; counted_at: number | null;
+}
+
+/** The four cards, exact: one SQL query for built-in lists and search; with audience conditions, customer-counts.ts. */
+async function summaryOf(db: DB, projectId: string, r: Resolved, now: Date, inlineLimit?: number): Promise<ListSummary> {
+  if (r.js) {
+    const spec: ListCountSpec = { list: r.builtIn, audience_rules: r.audienceRules, rules: r.q.rules ?? null, search: r.q.search?.trim().toLowerCase() || null };
+    const c = await exactCount(db, projectId, "customer_list", spec, now, inlineLimit);
+    return { object: "customer_list_summary", ...c.result, is_approximate: false, is_counting: c.counting, counted_at: c.countedAt };
+  }
+  const at = sql`${now.toISOString()}::timestamptz`;
+  const active = sql`(s.refunded_at IS NULL AND (s.expires_date IS NULL OR s.expires_date > ${at} OR (s.grace_period_expires_date IS NOT NULL AND s.grace_period_expires_date > ${at})))`;
+  const res = await db.execute(sql`SELECT count(*)::int AS customers, (count(*) FILTER (WHERE ps.trialing))::int AS trialing, (count(*) FILTER (WHERE ps.paid))::int AS paid,
+      coalesce(sum(round(coalesce(tx.usd, 0)::numeric, 2)), 0)::float8 AS revenue
+    FROM customers c
+    LEFT JOIN (SELECT s.customer_id, bool_or(${active} AND s.period_type = 'trial') AS trialing, bool_or(${active} AND s.period_type <> 'trial') AS paid
+      FROM subscriptions s WHERE s.project_id = ${projectId} AND s.store <> 'promotional' AND NOT s.is_sandbox GROUP BY s.customer_id) ps ON ps.customer_id = c.id
+    LEFT JOIN (SELECT t.customer_id, sum(t.revenue_usd) AS usd FROM transactions t WHERE t.project_id = ${projectId} AND NOT t.is_sandbox GROUP BY t.customer_id) tx ON tx.customer_id = c.id
+    WHERE ${filterSql(projectId, { list: r.builtIn, search: r.q.search }, now)}`);
+  const [x] = (res as unknown as { rows?: Record<string, number>[] }).rows ?? (res as unknown as Record<string, number>[]);
   return {
-    rows,
-    summary: {
-      object: "customer_list_summary" as const,
-      customers: rows.length,
-      // The cards count production subscriptions only, like charts; sandbox testers are in the Sandbox list.
-      trialing_subscribers: matched.filter((i) => prodSubs(i).some((x) => subActive(x, now) && x.periodType === "trial")).length,
-      paid_subscribers: matched.filter((i) => prodSubs(i).some((x) => subActive(x, now) && x.periodType !== "trial")).length,
-      total_revenue_in_usd: Math.round(rows.reduce((x, r) => x + r.spent_in_usd, 0) * 100) / 100,
-      is_approximate: truncated,
-    },
+    object: "customer_list_summary", customers: Number(x?.customers ?? 0), trialing_subscribers: Number(x?.trialing ?? 0), paid_subscribers: Number(x?.paid ?? 0),
+    // The cards count production subscriptions only, like charts; sandbox testers are in the Sandbox list.
+    total_revenue_in_usd: Math.round(Number(x?.revenue ?? 0) * 100) / 100, is_approximate: false, is_counting: false, counted_at: now.getTime(),
   };
 }
 
-export const SORT_KEYS = ["id", "subscription_status", "auto_renewal_status", "first_seen_at", "last_seen_at", "spent_in_usd"] as const;
-export type SortKey = (typeof SORT_KEYS)[number];
-const STATUS_RANK: Record<ListRow["subscription_status"], number> = { active: 0, trialing: 1, grace_period: 2, billing_issue: 3, expired: 4, none: 5 };
-const RENEW_RANK = { on: 0, off: 1 } as const;
-
 /**
- * Sorts rows by one column. In both directions, customers with no auto-renewal value stay last, and so do anonymous IDs
- * when sorting by ID (they have no app user ID of their own). Ties keep the default order (newest last seen first).
+ * One page of the list (`limit` rows after customer `startingAfter`) and its exact summary cards. A sparse audience on a
+ * large project may answer fewer rows with a `next` cursor: the customers up to it were all checked.
  */
-export function sortRows(rows: ListRow[], key: SortKey, direction: "asc" | "desc"): ListRow[] {
-  const sign = direction === "asc" ? 1 : -1;
-  const value = (r: ListRow): number | string | null => {
-    switch (key) {
-      case "id": return r.id.startsWith("$RCAnonymousID:") ? null : r.id.toLowerCase();
-      case "subscription_status": return STATUS_RANK[r.subscription_status];
-      case "auto_renewal_status": return r.auto_renewal_status ? RENEW_RANK[r.auto_renewal_status] : null;
-      default: return r[key];
-    }
-  };
-  // Anonymous IDs share their prefix, so among themselves they sort by the part the dashboard shows.
-  const lastValue = (r: ListRow) => (key === "id" ? r.id.toLowerCase() : 0);
-  const cmp = (x: number | string, y: number | string) => (x === y ? 0 : (x < y ? -1 : 1) * sign);
-  return rows.map((r, i) => ({ r, i, v: value(r) })).sort((a, b) => {
-    if (a.v === null && b.v === null) return cmp(lastValue(a.r), lastValue(b.r)) || a.i - b.i;
-    if (a.v === null) return 1;
-    if (b.v === null) return -1;
-    return cmp(a.v, b.v) || a.i - b.i;
-  }).map((x) => x.r);
+export async function listPage(db: DB, projectId: string, q: ListQuery, now: Date, o: { limit: number; startingAfter?: string | null; inlineLimit?: number }) {
+  const r = await resolve(db, projectId, q);
+  if (!r) return null;
+  const rows: ListRow[] = [];
+  let last: string | null = null, end = false;
+  for await (const chunk of matchingRows(db, projectId, r, now, o.startingAfter ?? null, o.limit + 1, LIST_SCAN_PAGES)) {
+    if (!chunk) return { badCursor: true as const };
+    rows.push(...chunk.rows);
+    last = chunk.last; end = chunk.end;
+  }
+  const page = rows.slice(0, o.limit);
+  const next = rows.length > o.limit ? page[page.length - 1]!.customer_uuid : !end && last ? last : null;
+  return { badCursor: false as const, rows: page, next, summary: await summaryOf(db, projectId, r, now, o.inlineLimit) };
+}
+
+/** The list's rows in list order, a page at a time (the CSV export streams these), within the export's limits. */
+export async function exportPages(db: DB, projectId: string, q: ListQuery, now: Date): Promise<AsyncGenerator<ListRow[]> | null> {
+  const r = await resolve(db, projectId, q);
+  if (!r) return null;
+  return (async function* () {
+    for await (const chunk of matchingRows(db, projectId, r, now, null, EXPORT_MAX_ROWS, EXPORT_SCAN_PAGES)) if (chunk?.rows.length) yield chunk.rows;
+  })();
 }
 
 export const csvCell = (v: unknown) => {
@@ -135,9 +186,8 @@ export const csvCell = (v: unknown) => {
 };
 const iso = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : "");
 
-export function toCsv(rows: ListRow[]): string {
-  const head = ["app_user_id", "email", "subscription_status", "auto_renewal_status", "first_seen_at", "last_seen_at", "spent_in_usd", "latest_product_id", "latest_store", "latest_purchase_at", "country", "platform"];
-  const lines = rows.map((r) => [r.id, r.email, r.subscription_status, r.auto_renewal_status, iso(r.first_seen_at), iso(r.last_seen_at), r.spent_in_usd.toFixed(2),
-    r.latest_purchase?.product_id, r.latest_purchase?.store, iso(r.latest_purchase?.purchased_at), r.country, r.platform].map(csvCell).join(","));
-  return [head.join(","), ...lines].join("\r\n") + "\r\n";
-}
+export const CSV_HEAD = "app_user_id,email,subscription_status,auto_renewal_status,first_seen_at,last_seen_at,spent_in_usd,latest_product_id,latest_store,latest_purchase_at,country,platform\r\n";
+export const csvLines = (rows: ListRow[]) => rows.map((r) => [r.id, r.email, r.subscription_status, r.auto_renewal_status, iso(r.first_seen_at), iso(r.last_seen_at), r.spent_in_usd.toFixed(2),
+  r.latest_purchase?.product_id, r.latest_purchase?.store, iso(r.latest_purchase?.purchased_at), r.country, r.platform].map(csvCell).join(",") + "\r\n").join("");
+
+export const toCsv = (rows: ListRow[]): string => CSV_HEAD + csvLines(rows);

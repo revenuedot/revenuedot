@@ -28,6 +28,8 @@ export interface HarnessOptions {
   databaseUrl?: string;
   /** Store adapters instead of `defaultStores()`, e.g. an App Store adapter with a stubbed App Store Server API. */
   stores?: Record<string, import("@revenuedot/server").StoreAdapter>;
+  /** Largest project counted in the request (services/customer-counts.ts); larger ones are counted by the tick. */
+  countInlineLimit?: number;
 }
 
 /** Boots the server on an empty Postgres (in-memory PGlite, or real Postgres with REVENUEDOT_TEST_PG_URL) with one project, an App Store app, a Play app and a Test Store app. */

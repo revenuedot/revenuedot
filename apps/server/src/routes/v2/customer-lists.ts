@@ -1,5 +1,5 @@
 import type { Deps } from "../../context.js";
-import { queryCustomerList, SORT_KEYS, sortRows, toCsv, type SortKey } from "../../services/customer-lists.js";
+import { CSV_HEAD, csvLines, exportPages, listPage, SORT_KEYS, type SortKey } from "../../services/customer-lists.js";
 import type { Rules } from "../../services/targeting.js";
 import { checkRules, RulesIn } from "./refund-control.js";
 import { listOf, notFound, pageParams, paramError, scope, type V2Context, type V2Router } from "./common.js";
@@ -27,36 +27,38 @@ export function customerListRoutes(r: V2Router, deps: Deps) {
     if (direction !== "asc" && direction !== "desc") throw paramError("direction must be asc or desc.", "direction");
     return { list, rules, search: c.req.query("search") ?? null, sort: sort as SortKey | null, direction: direction as "asc" | "desc" };
   };
-  const load = async (c: V2Context, q: ReturnType<typeof parse>) => {
-    const res = await queryCustomerList(db, c.get("projectId"), q, deps.now());
-    if (res && q.sort) res.rows = sortRows(res.rows, q.sort, q.direction);
-    return res;
-  };
 
   r.get(P, scope("customer_information:customers:read"), async (c) => {
     const q = parse(c);
-    const res = await load(c, q);
-    if (!res) throw notFound("Audience");
     const { limit, startingAfter } = pageParams(c);
-    let start = 0;
-    if (startingAfter) {
-      const i = res.rows.findIndex((x) => x.customer_uuid === startingAfter);
-      if (i < 0) throw paramError("starting_after does not match an object in this list.", "starting_after");
-      start = i + 1;
-    }
-    const page = res.rows.slice(start, start + limit);
-    return c.json({ ...listOf(c, page, start + limit < res.rows.length && page.length ? page[page.length - 1]!.customer_uuid : null), summary: res.summary });
+    const res = await listPage(db, c.get("projectId"), q, deps.now(), { limit, startingAfter, inlineLimit: deps.countInlineLimit });
+    if (!res) throw notFound("Audience");
+    if (res.badCursor) throw paramError("starting_after does not match an object in this list.", "starting_after");
+    return c.json({ ...listOf(c, res.rows, res.next), summary: res.summary });
   });
 
+  // The whole list, streamed a page at a time, so a large project's export never holds every row in memory.
   r.get(`${P}/export`, scope("customer_information:customers:read"), async (c) => {
     const q = parse(c);
-    const res = await load(c, q);
-    if (!res) throw notFound("Audience");
-    const day = deps.now().toISOString().slice(0, 10);
-    return c.body(toCsv(res.rows), 200, {
+    const now = deps.now();
+    const pages = await exportPages(db, c.get("projectId"), q, now);
+    if (!pages) throw notFound("Audience");
+    const enc = new TextEncoder();
+    let head = true;
+    const body = new ReadableStream<Uint8Array>({
+      async pull(ctl) {
+        if (head) { head = false; ctl.enqueue(enc.encode(CSV_HEAD)); return; }
+        try {
+          const next = await pages.next();
+          if (next.done) ctl.close(); else ctl.enqueue(enc.encode(csvLines(next.value)));
+        } catch (e) { ctl.error(e); }
+      },
+      async cancel() { await pages.return(undefined); },
+    });
+    const day = now.toISOString().slice(0, 10);
+    return c.body(body, 200, {
       "content-type": "text/csv; charset=utf-8",
       "content-disposition": `attachment; filename="customers-${q.list.replace(/[^a-z0-9_-]/gi, "")}-${day}.csv"`,
-      ...(res.summary.is_approximate ? { "x-revenuedot-approximate": "true" } : {}),
     });
   });
 }

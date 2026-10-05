@@ -495,13 +495,3 @@ export async function refundStats(db: DB, projectId: string, o: { days: number; 
   };
 }
 
-/** Customers each policy would decide for (first match wins, like a real request), over the most recently seen customers. */
-export function policyCounts(policies: PolicyRow[], contexts: CustomerContext[], now: number): { byPolicy: Record<string, number>; default: number } {
-  const byPolicy: Record<string, number> = Object.fromEntries(policies.map((p) => [p.id, 0]));
-  let rest = 0;
-  for (const ctx of contexts) {
-    const d = choosePolicy(policies, ctx, now, "do_not_respond");
-    if (d.policyId) byPolicy[d.policyId]!++; else rest++;
-  }
-  return { byPolicy, default: rest };
-}

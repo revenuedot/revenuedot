@@ -53,6 +53,23 @@ test("refund control: cards, add a recent-renewal policy, preference, prorated d
   const unsaved = page.getByRole("region", { name: "Unsaved changes" });
   await expect(unsaved).toHaveCount(0);
 
+  // Policy counts are exact. In a large project they come from the background count: "Counting…" first, then the number.
+  const rc = await json(page, "GET", `${P}/refund_control`);
+  const firstCount = page.locator(".policy-list > li").nth(0).locator(".count");
+  const want = `${rc.policies[0].customer_count.toLocaleString("en-US")} customer${rc.policies[0].customer_count === 1 ? "" : "s"}`;
+  await expect(firstCount).toHaveText(want);
+  await page.request.post("/__counts", { data: { inline_limit: 0, paused: true } });
+  try {
+    await page.reload();
+    await expect(firstCount).toHaveText("Counting…");
+    await expect(page.getByTestId("count-note")).toBeVisible();
+    await page.request.post("/__counts", { data: { paused: false } });
+    await expect(firstCount).toHaveText(want, { timeout: 30_000 });
+    await expect(page.getByTestId("count-note")).toHaveCount(0);
+  } finally {
+    await page.request.post("/__counts", { data: { inline_limit: null, paused: false } });
+  }
+
   // Add a "Recent renewal" policy: the template's condition, then a preference.
   await page.getByRole("button", { name: "Add policy: Recent renewal" }).click();
   await expect(page.getByLabel("Policy 3 name")).toHaveValue("Recent renewal");
@@ -329,6 +346,23 @@ test("customers: lists, summary cards, filter, save audience, export, search", a
   const auds = (await json(page, "GET", `${P}/audiences`)).items;
   expect(auds.find((a: any) => a.name === "Active in the US").rules).toEqual({ groups: [{ conditions: [{ field: "status", operator: "isAnyOf", value: "active,trialing" }, { field: "country", operator: "is", value: "US" }] }] });
   await expect(page.locator("table tbody tr").first()).toBeVisible();
+
+  // A large project counts an audience's cards in the background: "Counting…", then the exact number once the tick has
+  // walked every customer (the page polls while it counts). The rows never wait.
+  const audId = auds.find((a: any) => a.name === "Active in the US").id;
+  const exactCount = (await json(page, "GET", `${P}/customer_lists?list=${audId}&limit=1`)).summary.customers;
+  await page.request.post("/__counts", { data: { inline_limit: 0, paused: true } });
+  try {
+    await page.reload();
+    await expect(card("Customers")).toHaveText("Counting…");
+    await expect(page.getByTestId("count-note")).toHaveText("Counting every customer. The numbers appear here in a minute or two.");
+    await expect(page.locator("table tbody tr").first()).toBeVisible();
+    await page.request.post("/__counts", { data: { paused: false } });
+    await expect(card("Customers")).toHaveText(exactCount.toLocaleString("en-US"), { timeout: 30_000 });
+    await expect(page.getByTestId("count-note")).toHaveCount(0);
+  } finally {
+    await page.request.post("/__counts", { data: { inline_limit: null, paused: false } });
+  }
 
   // Export downloads a CSV with a header row.
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export all" }).click()]);

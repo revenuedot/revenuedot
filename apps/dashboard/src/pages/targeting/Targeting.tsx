@@ -46,7 +46,7 @@ function AudienceDialog({ pid, existing, onClose, onSaved }: { pid: string; exis
   const rules = toRules(groups);
   async function check() {
     setErr(null);
-    try { const p = await api<{ stats: { total_customers: number; is_approximate: boolean } }>(`${v2(pid)}/audiences/actions/preview`, { method: "POST", json: { rules } }); setPreview(`${p.stats.is_approximate ? "About " : ""}${fmt.int(p.stats.total_customers)} customers match today.`); }
+    try { const p = await api<{ stats: { total_customers: number; is_approximate: boolean } }>(`${v2(pid)}/audiences/actions/preview`, { method: "POST", json: { rules } }); setPreview(p.stats.is_approximate ? "Counting every customer. Check again in a minute or two." : `${fmt.int(p.stats.total_customers)} customers match today.`); }
     catch (e) { setErr(errMsg(e)); }
   }
   async function submit(e: FormEvent) {

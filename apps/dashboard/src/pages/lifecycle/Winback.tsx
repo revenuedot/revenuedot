@@ -12,7 +12,7 @@ import { api, fmt, type List } from "../../lib/api";
 import { Shell, useMe } from "../../components/Shell";
 import { Icon } from "../../components/icons";
 import { Check, ConfirmDialog, DataTable, Dialog, EmptyState, Field, Panel, Tag, useProjectId, useToast } from "../../components/ui";
-import { money, relative, storeLabel } from "../../lib/customers";
+import { countNote, money, pollWhileCounting, relative, storeLabel } from "../../lib/customers";
 import { errMsg, useApps, useProducts, v2 } from "../catalog/lib";
 import { CAMPAIGN_STATUS, type Audience, type WinbackCampaign } from "./lib";
 
@@ -68,7 +68,7 @@ const DEFAULT_FORM: Form = {
 const formOf = (c: WinbackCampaign): Form => ({ name: c.name, audience: c.audience, email: { ...c.email, sender_name: c.email.sender_name ?? "" }, offer: { type: c.offer.type, url: c.offer.url ?? null }, send_hour_utc: c.send_hour_utc, track_opens: c.track_opens });
 const STORE_CHOICES = ["app_store", "mac_app_store", "play_store", "amazon", "stripe"];
 
-interface Preview { eligible: number; is_approximate: boolean; sample: { app_user_id: string; email: string; churned_at: number; product_id: string; store: string }[] }
+interface Preview { eligible: number; is_approximate: boolean; is_counting: boolean; counted_at: number | null; sample: { app_user_id: string; email: string; churned_at: number; product_id: string; store: string }[] }
 
 export function WinbackEditor() {
   const pid = useProjectId();
@@ -100,6 +100,7 @@ export function WinbackEditor() {
   const preview = useQuery({
     queryKey: ["winback-preview", pid, campaignId, q.data?.updated_at ?? q.data?.created_at, q.data?.last_run_at], enabled: !isNew && !!q.data,
     queryFn: () => api<Preview>(`${v2(pid)}/winback_campaigns/${campaignId}/actions/preview`, { method: "POST" }),
+    refetchInterval: (query) => pollWhileCounting(query.state.data?.is_counting),
   });
 
   const subProducts = useMemo(() => [...new Set((products.data ?? []).filter((p) => p.type === "subscription" && (apps.data ?? []).some((a) => a.id === p.app_id && a.type !== "test_store")).map((p) => p.store_identifier))], [products.data, apps.data]);
@@ -255,7 +256,9 @@ export function WinbackEditor() {
                     : !preview.data ? <span className="sk line" />
                     : (
                       <div className="stack tight">
-                        <p style={{ margin: 0 }} data-testid="wb-eligible"><b className="num" style={{ fontSize: 22 }}>{preview.data.is_approximate ? "≈" : ""}{fmt.int(preview.data.eligible)}</b> <span className="muted">customer{preview.data.eligible === 1 ? "" : "s"} would get this email now{dirty ? " (as last saved)" : ""}.</span></p>
+                        {preview.data.is_counting
+                          ? <p style={{ margin: 0 }} data-testid="wb-eligible"><b style={{ fontSize: 16 }}>Counting…</b> <span className="muted">{countNote(true, null)}</span></p>
+                          : <p style={{ margin: 0 }} data-testid="wb-eligible"><b className="num" style={{ fontSize: 22 }}>{fmt.int(preview.data.eligible)}</b> <span className="muted">customer{preview.data.eligible === 1 ? "" : "s"} would get this email now{dirty ? " (as last saved)" : ""}.{countNote(false, preview.data.counted_at) ? ` ${countNote(false, preview.data.counted_at)}` : ""}</span></p>}
                         {preview.data.sample.length > 0 && (
                           <div className="tbl"><table className="compact"><thead><tr><th>Customer</th><th>Churned</th></tr></thead><tbody>
                             {preview.data.sample.map((s) => <tr key={s.app_user_id}><td><Link className="mono" style={{ fontSize: 12 }} to={`/projects/${pid}/customers/${encodeURIComponent(s.app_user_id)}`}>{s.app_user_id}</Link><span className="cellsub">{s.email}</span></td><td><span className="subtle">{relative(s.churned_at)}</span><span className="cellsub mono">{s.product_id}</span></td></tr>)}

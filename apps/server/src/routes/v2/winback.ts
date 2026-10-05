@@ -6,7 +6,7 @@ import type { Deps } from "../../context.js";
 import { isEmailAddress, oneClickUnsubscribeHeaders, trySend } from "../../mail/index.js";
 import { hit } from "../../services/rate-limit.js";
 import { publicOrigin } from "../oauth.js";
-import { DEFAULT_AUDIENCE, TEST_EMAIL_TOKEN, audienceOf, campaignStats, candidatesFor, emailOf, offerOf, recentSends, renderFor, runCampaign, type CampaignRow } from "../../services/winback.js";
+import { DEFAULT_AUDIENCE, TEST_EMAIL_TOKEN, audienceOf, campaignStats, previewCampaign, emailOf, offerOf, recentSends, renderFor, runCampaign, type CampaignRow } from "../../services/winback.js";
 import { V2Error, body, listOf, notFound, paramError, scope, type V2Router } from "./common.js";
 
 /** Win-back campaigns (RevenueDot extension; prd/lifecycle/PRD.md). */
@@ -99,10 +99,10 @@ export function winbackRoutes(r: V2Router, deps: Deps) {
   // Who would get the email if the campaign ran now (no email is sent).
   r.post(`${P}/:campaign_id/actions/preview`, scope("project_configuration:projects:read"), async (c) => {
     const row = await find(c.get("projectId"), c.req.param("campaign_id"));
-    const { candidates, truncated } = await candidatesFor(db, row, deps.now());
+    const p = await previewCampaign(db, row, deps.now(), deps.countInlineLimit);
     return c.json({
-      object: "winback_preview", eligible: candidates.length, is_approximate: truncated,
-      sample: candidates.slice(0, 10).map((x) => ({ app_user_id: x.appUserId, email: x.email, churned_at: x.churnedAt, product_id: x.productId, store: x.store })),
+      object: "winback_preview", eligible: p.eligible, is_approximate: false, is_counting: p.counting, counted_at: p.countedAt,
+      sample: p.sample.map((x) => ({ app_user_id: x.appUserId, email: x.email, churned_at: x.churnedAt, product_id: x.productId, store: x.store })),
     });
   });
   r.post(`${P}/:campaign_id/actions/send_test`, scope("project_configuration:projects:read_write"), async (c) => {
