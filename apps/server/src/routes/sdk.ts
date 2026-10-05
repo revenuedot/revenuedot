@@ -15,6 +15,7 @@ import { recordSdkVersion, sdkHeaders } from "../services/sdk-versions.js";
 import { attributionDataToAttributes, inBackground, resolveAdServicesToken, resolveDeviceAttributes, setAttributionOnce } from "../services/attribution.js";
 import { appleCredentials } from "../stores/apple/api.js";
 import { alpha2 } from "../stores/apple/map.js";
+import { priceFor, pricesOf } from "../services/test-store-prices.js";
 import { appAccountTokenFor, signOffer } from "../services/promo-offers.js";
 import { customerCenterFor } from "../services/customer-center.js";
 import { publicOrigin } from "./oauth.js";
@@ -512,13 +513,23 @@ export function sdkRoutes(deps: Deps) {
   r.get("/rcbilling/v1/subscribers/:id/products", async (c) => {
     const app = c.get("app");
     const ids = new URL(c.req.url).searchParams.getAll("id");
-    const rows = await deps.db.select().from(schema.products).where(eq(schema.products.appId, app.id));
+    const rows = (await deps.db.select().from(schema.products).where(eq(schema.products.appId, app.id))).filter((p) => ids.length === 0 || ids.includes(p.storeIdentifier));
     // Shape of RevenueCat's web billing products response (fixtures/ios/resp-web-billing-products.json).
     // The SDKs decode `cycle_count` as a non-null Int, so a null breaks the whole product.
-    // The price is the product's Test Store price (set in the dashboard or the v2 API), USD 0 when it has none.
-    const product_details = rows.filter((p) => ids.length === 0 || ids.includes(p.storeIdentifier)).map((p) => {
-      const micros = p.testStorePriceMicros ?? 0;
-      const price = { amount: micros / 1_000_000, amount_micros: micros, currency: p.testStorePriceCurrency ?? "USD" };
+    // The price is the product's Test Store price in the customer's currency (prd/catalog/PRD.md "Test Store prices by
+    // currency"): purchases-js asks for one (`?currency=`), the native SDKs send the storefront (`X-Storefront`, alpha-3 on
+    // iOS); else the country the customer was last seen in; else the default price; USD 0 when the product has none.
+    const prices = await pricesOf(deps.db, rows);
+    const want = { currency: new URL(c.req.url).searchParams.get("currency"), country: alpha2(c.req.header("x-storefront")) };
+    let appUserId = c.req.param("id");
+    try { appUserId = decodeURIComponent(appUserId); } catch { /* kept as sent */ }
+    // The customer's last country matters only when no currency was asked for and a product has more than one price.
+    const choice = [...prices.values()].some((l) => l.length > 1);
+    if (!want.country && !want.currency && choice && appUserId) want.country = (await findCustomer(deps.db, app.projectId, appUserId))?.lastSeenCountry ?? null;
+    const product_details = rows.map((p) => {
+      const chosen = priceFor(prices.get(p.id), want);
+      const micros = chosen?.amount_micros ?? 0;
+      const price = { amount: micros / 1_000_000, amount_micros: micros, currency: chosen?.currency ?? "USD" };
       const sub = p.type === "subscription";
       const period = p.duration ?? "P1M";
       const option = { id: "base", price_id: "base", base: sub ? { period_duration: period, cycle_count: 1, price } : null, base_price: sub ? null : price, trial: null, intro_price: null };

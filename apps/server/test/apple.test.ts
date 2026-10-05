@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { decodeJwt, decodeProtectedHeader } from "jose";
+import { schema } from "@revenuedot/db";
 import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
-import { periodTypeOf } from "../src/stores/apple/map.js";
+import { billingPlanOf, fromTransaction, periodTypeOf } from "../src/stores/apple/map.js";
 import { parseAppReceipt } from "../src/stores/apple/receipt.js";
 import { base64ToBytes } from "../src/stores/apple/asn1.js";
 import {
@@ -75,6 +76,26 @@ describe("StoreKit 2 signed transactions", () => {
     expect(periodTypeOf({ offerType: 3, offerDiscountType: "FREE_TRIAL", price: 0 })).toBe("trial");
     expect(periodTypeOf({ offerType: 3, offerDiscountType: "PAY_AS_YOU_GO", price: 490 })).toBe("intro");
     expect(periodTypeOf({ offerType: 4, price: 490 })).toBe("normal");
+  });
+
+  it("billing plan (iOS 26.4): MONTHLY is product plan monthly; up front, a missing field and unknown values are none", () => {
+    expect(billingPlanOf({ billingPlanType: "MONTHLY" })).toBe("monthly");
+    expect(billingPlanOf({ billingPlanType: "BILLED_UPFRONT" })).toBeNull();
+    expect(billingPlanOf({})).toBeNull();
+    expect(billingPlanOf({ billingPlanType: "QUARTERLY" })).toBeNull();
+    const at = { store: "app_store" as const, detectedAt: new Date(T0) };
+    expect(fromTransaction(transaction({ billingPlanType: "MONTHLY" }), at)).toMatchObject({ kind: "subscription", productIdentifier: "pro_monthly", productPlanIdentifier: "monthly" });
+    expect(fromTransaction(transaction(), at)).toMatchObject({ kind: "subscription", productPlanIdentifier: null });
+    expect(fromTransaction(transaction({ productId: "lifetime", type: "Non-Consumable", expiresDate: undefined, billingPlanType: "MONTHLY" }), at)).not.toHaveProperty("productPlanIdentifier");
+  });
+
+  it("a monthly billing plan purchase reports product_plan_identifier and keeps unlocking a bare product", async () => {
+    h = await appleHarness();
+    const body = await (await h.postReceipt("plan_user", await signJws(transaction({ billingPlanType: "MONTHLY" }), pki))).json();
+    expect(body.subscriber.subscriptions.pro_monthly).toMatchObject({ product_plan_identifier: "monthly", store_transaction_id: "2000000001" });
+    expect(body.subscriber.entitlements.pro).toMatchObject({ product_identifier: "pro_monthly", product_plan_identifier: "monthly", expires_date: iso(T0 + 30 * DAY) });
+    const [row] = await h.db.select().from(schema.subscriptions);
+    expect(row!.productPlanIdentifier).toBe("monthly");
   });
 
   it("a consumable lands in non_subscriptions with store_transaction_id equal to the transaction id, so the SDK can finish it", async () => {

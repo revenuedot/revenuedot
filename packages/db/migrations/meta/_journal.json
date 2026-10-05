@@ -278,8 +278,15 @@
     {
       "idx": 42,
       "version": "7",
-      "when": 1791162869658,
-      "tag": "0042_journeys",
+      "when": 1791161649745,
+      "tag": "0042_test_store_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791163093730,
+      "tag": "0043_journeys",
       "breakpoints": true
     }
   ]

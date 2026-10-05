@@ -49,7 +49,7 @@ const Subscription = z.object({
   source_id: z.string().max(255).optional(),
   app_id: z.string().max(255).nullable().optional(),
   store: z.enum(STORES),
-  /** Store product id; Google `subscriptionId:basePlanId` is split into product and base plan. */
+  /** Store product id; Google `subscriptionId:basePlanId` and App Store `product:monthly` (billing plan) are split into product and plan. */
   product_identifier: z.string().min(1).max(511),
   environment: Env.default("production"),
   ownership: z.enum(["purchased", "family_shared"]).default("purchased"),

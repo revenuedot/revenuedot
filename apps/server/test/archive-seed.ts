@@ -64,6 +64,8 @@ export async function seedEverything(db: DB, key: SecretKey | null, o: { userId:
   await db.insert(s.emailSuppressions).values({ projectId: P, email: "gone@example.com" });
   await db.insert(s.webConfigs).values({ appId: "app_stripe", projectId: P, config: { app_name: "Scanner", colors: { accent: "#000" } } });
   await db.insert(s.products).values({ id: "p_web", projectId: P, appId: "app_stripe", storeIdentifier: "price_X", type: "subscription" });
+  await db.insert(s.products).values({ id: "p_prices", projectId: P, appId: "app_test", storeIdentifier: "pro_euro", type: "subscription", testStorePriceMicros: 9_990_000, testStorePriceCurrency: "USD" });
+  await db.insert(s.productPrices).values([{ id: "prc_usd", productId: "p_prices", projectId: P, currency: "USD", amountMicros: 9_990_000 }, { id: "prc_eur", productId: "p_prices", projectId: P, currency: "EUR", amountMicros: 8_990_000 }]);
   await db.insert(s.webProducts).values({ productId: "p_web", projectId: P, appId: "app_stripe", stripeProductId: "prod_X", stripePriceId: "price_X", amountMinor: 999, currency: "usd", interval: "month", intervalCount: 1 });
   await db.insert(s.webDomains).values({ projectId: P, slug: `scanner-${P}`, verificationToken: "verify-me" });
   await db.insert(s.purchaseLinks).values({ id: "pl_1", projectId: P, appId: "app_stripe", offeringId: "ofr_default", name: "Launch", slug: "launch" });

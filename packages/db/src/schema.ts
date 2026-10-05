@@ -129,6 +129,20 @@ export const products = pgTable("products", {
   createdAt: created(),
 }, (t) => [uniqueIndex("products_app_store_id").on(t.appId, t.storeIdentifier)]);
 
+/**
+ * Test Store prices by currency (RevenueCat's `…/products/{id}/test_store_prices` and `…/prices`), one row per currency.
+ * The product's `test_store_price_*` columns stay the default price: always one of these rows, used for
+ * `indicative_price` and when no price matches the customer's currency (apps/server/src/services/test-store-prices.ts).
+ */
+export const productPrices = pgTable("product_prices", {
+  id: text("id").primaryKey(),
+  productId: text("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  currency: text("currency").notNull(),
+  amountMicros: bigint("amount_micros", { mode: "number" }).notNull(),
+  createdAt: created(),
+}, (t) => [uniqueIndex("product_prices_currency").on(t.productId, t.currency)]);
+
 /** One store price in one territory (App Store territory `USA`, Google Play region `US`), amount in micros of `currency`. */
 export interface StorePrice { territory: string; currency: string; amount_micros: number }
 

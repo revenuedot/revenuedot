@@ -1,6 +1,6 @@
 import { commissionModel } from "../../services/commission.js";
 import { and, eq, gte, lte } from "drizzle-orm";
-import { accessEndsAt, commission, mrrFactor, revenueFactor, taxShare, type Store } from "@revenuedot/core";
+import { accessEndsAt, commission, mrrFactor, productKeysFor, revenueFactor, taxShare, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { Deps } from "../../context.js";
 import { subRowToDomain } from "../../repo/customers.js";
@@ -38,8 +38,7 @@ export async function overviewValues(db: DB, projectId: string, now: Date, envir
     db.select({ firstSeen: schema.customers.firstSeen, lastSeen: schema.customers.lastSeen }).from(schema.customers).where(eq(schema.customers.projectId, projectId)),
   ]);
   const durationOf = (s: typeof subs[number]) => {
-    const keys = s.productPlanIdentifier ? [`${s.productIdentifier}:${s.productPlanIdentifier}`, s.productIdentifier] : [s.productIdentifier];
-    for (const k of keys) {
+    for (const k of productKeysFor(s)) {
       const p = products.find((x) => x.storeIdentifier === k && x.appId === s.appId) ?? products.find((x) => x.storeIdentifier === k);
       if (p?.duration) return p.duration;
     }

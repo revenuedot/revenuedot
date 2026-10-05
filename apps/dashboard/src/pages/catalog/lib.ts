@@ -7,6 +7,9 @@ export interface App {
   object: "app"; id: string; name: string; type: string; created_at: number; project_id: string;
   app_store?: { bundle_id: string }; mac_app_store?: { bundle_id: string }; play_store?: { package_name: string }; amazon?: { package_name: string }; galaxy?: { package_name: string };
 }
+/** One Test Store price (`GET …/products/{id}/prices`). */
+export interface ProductPrice { id: string | null; currency: string; amount_micros: number }
+
 export interface Product {
   object: "product"; id: string; store_identifier: string; type: string; state: "active" | "inactive"; created_at: number; app_id: string;
   display_name: string | null; subscription?: { duration: string | null }; one_time?: { is_consumable: boolean | null };
@@ -179,7 +182,7 @@ export const appIdentifier = (a: App) => a.app_store?.bundle_id ?? a.mac_app_sto
 /** Placeholder and help for the store identifier field, per store. */
 export function storeIdHelp(type: string | undefined): { placeholder: string; hint: string } {
   switch (type) {
-    case "app_store": case "mac_app_store": return { placeholder: "com.example.pro.monthly", hint: "The product ID from App Store Connect." };
+    case "app_store": case "mac_app_store": return { placeholder: "com.example.pro.monthly", hint: "The product ID from App Store Connect. A monthly billing plan with a 12-month commitment (iOS 26.4): productId:monthly." };
     case "play_store": return { placeholder: "pro_monthly:monthly-base", hint: "Subscriptions: productId:basePlanId. One-time products: the SKU." };
     case "amazon": return { placeholder: "com.example.pro.monthly", hint: "The term SKU for subscriptions, the SKU for one-time products." };
     case "stripe": case "rc_billing": return { placeholder: "prod_1234", hint: "The Stripe product ID, starting with prod_." };

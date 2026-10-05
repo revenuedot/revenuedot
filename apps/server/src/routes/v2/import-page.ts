@@ -323,8 +323,11 @@ async function importCustomer(ws: WorkingSet, ctx: Ctx, cu: ImportCustomer, viaS
 
 /** Maps an imported subscription to the stored fields, with deterministic detection times so re-imports change nothing. */
 function toVerified(s: ImportSub, k: KeyInfo, notes: string[]): VerifiedSubscription & { entitlement: string | null } {
-  const google = s.store === "play_store";
-  const [product, plan] = google && s.product_identifier.includes(":") ? s.product_identifier.split(":", 2) as [string, string] : [s.product_identifier, null];
+  // Google `subscriptionId:basePlanId`, and App Store `product:monthly` billing plans (App Store product ids have no colon);
+  // an up-front App Store plan is stored as the bare product, the way App Store purchases record it.
+  const apple = s.store === "app_store" || s.store === "mac_app_store";
+  const [product, splitPlan] = (s.store === "play_store" || apple) && s.product_identifier.includes(":") ? s.product_identifier.split(":", 2) as [string, string] : [s.product_identifier, null];
+  const plan = apple && splitPlan === "upFront" ? null : splitPlan;
   const periodStart = new Date(s.current_period_starts_at);
   const periodEnd = d(s.current_period_ends_at);
   const promo = s.store === "promotional";

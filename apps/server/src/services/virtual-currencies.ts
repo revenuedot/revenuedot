@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { newId, webhookStore, type Store } from "@revenuedot/core";
+import { newId, productKeysFor, webhookStore, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { CustomerRow } from "../repo/customers.js";
 import { recordRawEvent } from "./events.js";
@@ -24,10 +24,12 @@ export async function grantForPurchase(db: DB, opts: {
   // Blocked customers, and sandbox purchases outside the project's sandbox testing access, credit nothing (prd/project-settings).
   const access = await accessOf(db, opts.customer);
   if (access.blocked || (opts.sandbox && access.sandbox === false)) return {};
-  const ids = [opts.productIdentifier, ...(opts.productPlanIdentifier ? [`${opts.productIdentifier}:${opts.productPlanIdentifier}`] : [])];
-  const products = await db.select({ id: schema.products.id, name: schema.products.displayName }).from(schema.products)
+  const ids = productKeysFor(opts);
+  const products = await db.select({ id: schema.products.id, name: schema.products.displayName, storeId: schema.products.storeIdentifier }).from(schema.products)
     .where(and(eq(schema.products.projectId, opts.projectId), inArray(schema.products.storeIdentifier, ids), ...(opts.appId ? [eq(schema.products.appId, opts.appId)] : [])));
   const productIds = new Set(products.map((p) => p.id));
+  // The name of the most specific catalog product the purchase matches (`product:plan` before the bare id).
+  const productName = ids.map((k) => products.find((p) => p.storeId === k)?.name).find(Boolean);
   const credited: Record<string, number> = {};
   for (const cur of currencies) {
     let amount = 0;
@@ -41,7 +43,7 @@ export async function grantForPurchase(db: DB, opts: {
       projectId: opts.projectId, appId: opts.appId, customer: opts.customer, appUserId: opts.appUserId, type: "VIRTUAL_CURRENCY_TRANSACTION", sandbox: opts.sandbox, now: opts.now,
       fields: {
         adjustments: [{ amount, currency: { code: cur.code, description: cur.description, name: cur.name } }],
-        product_display_name: products[0]?.name ?? opts.productIdentifier, product_id: opts.productIdentifier, purchase_environment: opts.sandbox ? "SANDBOX" : "PRODUCTION",
+        product_display_name: productName ?? opts.productIdentifier, product_id: opts.productIdentifier, purchase_environment: opts.sandbox ? "SANDBOX" : "PRODUCTION",
         source: "in_app_purchase", store: webhookStore(opts.store as Store), transaction_id: opts.transactionId, virtual_currency_transaction_id: `vatx${ledgerId.slice(4)}`,
       },
     });

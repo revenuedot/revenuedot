@@ -13,6 +13,7 @@ Essential (Tier 1)
 - Use the App Store Server API as the source of truth when credentials exist.
 - Handle every notification type that changes a purchase, and keep sandbox data apart from production data.
 - Extend one subscription or every subscriber of a product (store actions, see `prd/rest-api/PRD.md`).
+- Record the billing plan of every App Store subscription transaction (iOS 26.4 monthly plans with a 12-month commitment). Apple's `billingPlanType` on the signed transaction (App Store Server API 1.21, 2026-04-27) is `MONTHLY` or `BILLED_UPFRONT`; `MONTHLY` is stored as product plan `monthly`, anything else (up front, the field missing before iOS 26.4, a value Apple adds later) as no plan. This is the value the iOS SDK reports as `productPlanIdentifier` and files offline entitlements under, so entitlements match `product:monthly` the way `prd/offline-entitlements/PRD.md` describes. All decode paths go through `fromTransaction` in `map.ts`: StoreKit 2 receipts, App Store Server API history, subscription status and order lookups, and notifications. `renewalBillingPlanType` in the renewal info names the next period's plan and is not stored. Sources: https://developer.apple.com/documentation/appstoreserverapi/billingplantype, https://developer.apple.com/documentation/appstoreserverapi/jwstransactiondecodedpayload, https://developer.apple.com/documentation/appstoreserverapi/renewalbillingplantype, https://developer.apple.com/documentation/appstoreserverapi/app-store-server-api-changelog (1.21), https://developer.apple.com/documentation/storekit/transaction/billingplantype (iOS 26.4).
 
 Later
 - Send consumption information for Apple's Refund Control.
@@ -34,11 +35,12 @@ Later
 - Dashboard: the app page `/projects/:projectId/apps/:appId` (`AppConfig.tsx`) holds the key, the notification URL with its last received time, and the forwarding URL.
 
 ## Tests that prove it
-- `apps/server/test/apple.test.ts` (30 tests) covers StoreKit 2 purchases, idempotency, trials and intro offers, consumables, lifetime unlocks, family sharing, revocations, sandbox, bundle ID checks, tampered and wrongly chained payloads, StoreKit 1 receipts, history and renewal info from the Server API, billing retry, outages as 503, and Xcode receipts.
+- `apps/server/test/apple.test.ts` (32 tests) covers billing plans, StoreKit 2 purchases, idempotency, trials and intro offers, consumables, lifetime unlocks, family sharing, revocations, sandbox, bundle ID checks, tampered and wrongly chained payloads, StoreKit 1 receipts, history and renewal info from the Server API, billing retry, outages as 503, and Xcode receipts.
 - `apps/server/test/apple-notifications.test.ts` (29 tests) covers each notification type and subtype, rejected payloads (400 for bad signature or bundle, 404 for an unknown app) and forwarding.
 - `apps/server/test/lifecycle-events.test.ts` (App Store part) covers declined price increases, upgrades, downgrades and reversed refunds.
 - `apps/server/test/setup-endpoints.test.ts` covers credential checks against a mocked Apple.
 - `apps/server/test/store-actions.test.ts` covers extend and mass extend.
+- `packages/contract/test/apple-billing-plan.test.ts` runs signed transactions with `billingPlanType` through receipts, notifications and the Server API (stubbed) and checks the online entitlements against the iOS offline lookup.
 
 ## Known gaps
 - No real App Store sandbox purchase has run end to end. It needs store credentials.

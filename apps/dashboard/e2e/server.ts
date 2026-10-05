@@ -253,6 +253,19 @@ web.post("/__store/renew", async (c) => {
     { projectId: b.project_id, appId: app.id, appUserId: b.app_user_id, now: at, fromDevice: false });
   return c.json({ ok: true });
 });
+// An App Store subscription through the real purchase pipeline, optionally on an iOS 26.4 billing plan, recorded as the
+// product plan the way the App Store adapter maps Apple's billingPlanType (billing-plan.spec.ts).
+web.post("/__store/purchase", async (c) => {
+  const b = await c.req.json() as { project_id: string; app_user_id: string; product: string; plan?: string | null };
+  const app = await storeApp(b.project_id, "app_store");
+  const key = `app_store_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const start = new Date(Date.now() - 3600_000);
+  const { customer } = await getOrCreateCustomer(db, b.project_id, b.app_user_id, start);
+  await applyPurchases(db, customer, [{ kind: "subscription", store: "app_store", storeKey: key, productIdentifier: b.product, productPlanIdentifier: b.plan ?? null, isSandbox: false,
+    purchaseDate: start, originalPurchaseDate: start, expiresDate: new Date(start.getTime() + 30 * DAY), periodType: "normal", storeTransactionId: `${key}.0`, originalTransactionId: key,
+    price: { amount: 4.99, currency: "USD" }, countryCode: "US" } as VerifiedPurchase], { projectId: b.project_id, appId: app.id, appUserId: b.app_user_id, now: start, fromDevice: false });
+  return c.json({ store_key: key, app_id: app.id });
+});
 /** The newest subscription across the fake accounts (specs share one e2e server), optionally only active ones. */
 function newestSubscription(onlyActive: boolean) {
   let best: { account: (typeof webStripe); value: Record<string, any> } | null = null;

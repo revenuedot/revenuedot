@@ -13,6 +13,19 @@ export function accessEndsAt(s: Subscription): Date | null {
   return s.expiresDate;
 }
 
+const APPLE_STORES: ReadonlySet<string> = new Set(["app_store", "mac_app_store"]);
+
+/**
+ * The catalog store identifiers a subscription matches, most specific first (prd/offline-entitlements/PRD.md):
+ * - with a plan (a Google Play base plan, an App Store billing plan such as `monthly`): `product:plan`, then the bare `product`;
+ * - an App Store purchase without a billing plan (paid up front, or bought before iOS 26.4): `product`, then
+ *   `product:upFront`, the key iOS files under the bare product for offline entitlements.
+ */
+export function productKeysFor(s: { store: string; productIdentifier: string; productPlanIdentifier?: string | null }): string[] {
+  if (s.productPlanIdentifier) return [`${s.productIdentifier}:${s.productPlanIdentifier}`, s.productIdentifier];
+  return APPLE_STORES.has(s.store) ? [s.productIdentifier, `${s.productIdentifier}:upFront`] : [s.productIdentifier];
+}
+
 /**
  * The entitlements block of customer info, computed from the catalog mapping.
  * Every entitlement that any purchase has ever unlocked is listed (active or expired), like RevenueCat;
@@ -39,7 +52,7 @@ export function computeEntitlements(state: CustomerState, catalog: EntitlementMa
     for (const s of state.subscriptions) {
       if (!counts(s)) continue;
       const promo = s.store === "promotional" && s.entitlementIdentifier === identifier;
-      if (!promo && !products.has(s.productIdentifier) && !(s.productPlanIdentifier && products.has(`${s.productIdentifier}:${s.productPlanIdentifier}`))) continue;
+      if (!promo && !productKeysFor(s).some((k) => products.has(k))) continue;
       const c: ActiveEntitlement = {
         identifier, productIdentifier: s.productIdentifier, productPlanIdentifier: s.productPlanIdentifier ?? null,
         purchaseDate: s.purchaseDate, expiresDate: accessEndsAt(s), gracePeriodExpiresDate: s.gracePeriodExpiresDate ?? null,

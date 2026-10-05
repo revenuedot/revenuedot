@@ -1,6 +1,6 @@
 import { commissionModel } from "../commission.js";
 import { and, asc, eq, gt, inArray, lte, or, sql, type AnyColumn } from "drizzle-orm";
-import { commission, splitGross, taxShare, type Store } from "@revenuedot/core";
+import { commission, productKeysFor, splitGross, taxShare, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { entitlementMap } from "../../repo/catalog.js";
 import { baseOrderId } from "../../stores/google/map.js";
@@ -249,7 +249,9 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
     const current = !!s && (s.storeTransactionId ?? s.storeKey) === t.storeTransactionId;
     const key = `${t.store}|${t.storeTransactionId}`;
     const refundedAt = refunds.has(key) && !reversals.has(key) ? refunds.get(key)! : current && s?.refundedAt ? s.refundedAt : null;
-    const product = (t.appId ? productOf.get(`${t.appId}|${t.productIdentifier}`) : undefined) ?? productAny.get(t.productIdentifier);
+    // The catalog keys of the period: `product:plan` (a Play base plan, an App Store billing plan) from the subscription, then the bare id.
+    const keys = productKeysFor(s && s.productIdentifier === t.productIdentifier ? s : { store: t.store, productIdentifier: t.productIdentifier });
+    const product = keys.map((k) => (t.appId ? productOf.get(`${t.appId}|${k}`) : undefined) ?? productAny.get(k)).find(Boolean);
     const chain = chains.get(chainKey(t)) ?? [t];
     const idx = Math.max(0, chain.findIndex((x) => x.id === t.id));
     const comm = cm.rate({ id: t.id, store: t.store, appId: t.appId, at: t.purchasedAt, kind: t.kind, isSandbox: t.isSandbox, country: t.countryCode, firstSeen: i?.c.firstSeen ?? null });
@@ -268,7 +270,7 @@ async function transactionsPage(db: DB, projectId: string, w: Window, cursor: Cu
       original_store_transaction_id: t.store === "play_store" ? baseOrderId(t.storeTransactionId) : s?.originalTransactionId ?? s?.storeKey ?? t.storeTransactionId,
       refunded_at: refundedAt, unsubscribe_detected_at: current ? s?.unsubscribeDetectedAt ?? null : null, billing_issues_detected_at: current ? s?.billingIssuesDetectedAt ?? null : null,
       purchased_currency: t.priceCurrency, price_in_purchased_currency: refundedAt ? 0 : t.priceAmount, purchase_price_in_purchased_currency: t.priceAmount,
-      entitlement_identifiers: JSON.stringify(Object.entries(ents).filter(([, p]) => p.includes(t.productIdentifier)).map(([k]) => k)),
+      entitlement_identifiers: JSON.stringify(Object.entries(ents).filter(([, p]) => keys.some((k) => p.includes(k))).map(([k]) => k)),
       renewal_number: idx + 1, is_trial_conversion: t.kind === "renewal" && idx > 0 && chain[idx - 1]!.kind === "trial",
       presented_offering: s?.presentedOfferingId ?? null, ownership_type: s?.ownershipType ?? "PURCHASED",
       reserved_subscriber_attributes: JSON.stringify(i?.reserved ?? {}), custom_subscriber_attributes: JSON.stringify(i?.custom ?? {}),

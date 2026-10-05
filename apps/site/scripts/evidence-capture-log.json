@@ -1,0 +1,2163 @@
+[
+  {
+    "vendor": "revenuecat",
+    "page": "home",
+    "url": "https://www.revenuecat.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 132,
+          "width": 800,
+          "height": 672
+        }
+      },
+      {
+        "claim": "apps-and-revenue",
+        "file": "home-apps-and-revenue-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 92,
+          "width": 800,
+          "height": 712
+        }
+      },
+      {
+        "claim": "paywall-templates",
+        "file": "home-paywall-templates-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 3804.78125,
+          "width": 800,
+          "height": 623.015625
+        }
+      },
+      {
+        "claim": "refund-handling",
+        "file": "home-refund-handling-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 7666.234375,
+          "width": 1256,
+          "height": 761.65625
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Build and Grow Your App Business | RevenueCat",
+    "pageHeight": 11773
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "pricing",
+    "url": "https://www.revenuecat.com/pricing/",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-to-2500-then-1-percent",
+        "file": "pricing-free-to-2500-then-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 140,
+          "y": 439,
+          "width": 1000,
+          "height": 673
+        }
+      },
+      {
+        "claim": "growth-tools-1-percent",
+        "file": "pricing-growth-tools-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 1654.5,
+          "width": 800,
+          "height": 503.328125
+        }
+      },
+      {
+        "claim": "features",
+        "file": "pricing-features-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 2384.828125,
+          "width": 1256,
+          "height": 1012
+        }
+      },
+      {
+        "claim": "support",
+        "file": "pricing-support-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 2880.828125,
+          "width": 780,
+          "height": 491
+        }
+      },
+      {
+        "claim": "enterprise",
+        "file": "pricing-enterprise-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 140,
+          "y": 439,
+          "width": 1000,
+          "height": 673
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing & Plans – RevenueCat | RevenueCat",
+    "pageHeight": 7796
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "security-and-compliance",
+    "url": "https://www.revenuecat.com/security-and-compliance/",
+    "ok": true,
+    "full": [
+      "security-and-compliance-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "soc2",
+        "file": "security-and-compliance-soc2-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 220,
+          "y": 344.5,
+          "width": 840,
+          "height": 500
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "RevenueCat Security & Compliance | RevenueCat",
+    "pageHeight": 2939
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "gdpr",
+    "url": "https://www.revenuecat.com/gdpr/",
+    "ok": true,
+    "full": [
+      "gdpr-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "processor",
+        "file": "gdpr-processor-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 220,
+          "y": 140,
+          "width": 840,
+          "height": 467
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GDPR | RevenueCat",
+    "pageHeight": 1612
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "community-pro-plan-payments",
+    "url": "https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618",
+    "ok": true,
+    "full": [
+      "community-pro-plan-payments-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "staff-reply-1-percent-of-whole-mtr",
+        "file": "community-pro-plan-payments-staff-reply-1-percent-of-whole-mtr-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 48,
+          "y": 67,
+          "width": 800,
+          "height": 808
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Questions about PRO plan payments | RevenueCat Community",
+    "pageHeight": 1535
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "github-purchases-ios-license",
+    "url": "https://github.com/RevenueCat/purchases-ios/blob/main/LICENSE",
+    "ok": true,
+    "full": [
+      "github-purchases-ios-license-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit",
+        "file": "github-purchases-ios-license-mit-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 318,
+          "y": 409,
+          "width": 962,
+          "height": 600
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "purchases-ios/LICENSE at main · RevenueCat/purchases-ios · GitHub",
+    "pageHeight": 1028
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-web-overview",
+    "url": "https://www.revenuecat.com/docs/web/overview",
+    "ok": true,
+    "full": [
+      "docs-web-overview-full-1-2026-10-04.png",
+      "docs-web-overview-full-2-2026-10-04.png",
+      "docs-web-overview-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe-paddle-billing",
+        "file": "docs-web-overview-stripe-paddle-billing-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 237.171875,
+          "width": 800,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Getting Started With RevenueCat Web | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 9056
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-web-stripe",
+    "url": "https://www.revenuecat.com/docs/web/integrations/stripe",
+    "ok": true,
+    "full": [
+      "docs-web-stripe-full-1-2026-10-04.png",
+      "docs-web-stripe-full-2-2026-10-04.png",
+      "docs-web-stripe-full-3-2026-10-04.png",
+      "docs-web-stripe-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "unlock-entitlements",
+        "file": "docs-web-stripe-unlock-entitlements-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 199.953125,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Stripe Billing | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 14725
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-third-party-integrations",
+    "url": "https://www.revenuecat.com/docs/integrations/third-party-integrations",
+    "ok": true,
+    "full": [
+      "docs-third-party-integrations-full-1-2026-10-04.png",
+      "docs-third-party-integrations-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "categories",
+        "file": "docs-third-party-integrations-categories-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 770.4765625,
+          "width": 800,
+          "height": 820
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Third Party Integrations | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 5286
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-scheduled-data-exports",
+    "url": "https://www.revenuecat.com/docs/integrations/scheduled-data-exports",
+    "ok": true,
+    "full": [
+      "docs-scheduled-data-exports-full-1-2026-10-04.png",
+      "docs-scheduled-data-exports-full-2-2026-10-04.png",
+      "docs-scheduled-data-exports-full-3-2026-10-04.png",
+      "docs-scheduled-data-exports-full-4-2026-10-04.png",
+      "docs-scheduled-data-exports-full-5-2026-10-04.png",
+      "docs-scheduled-data-exports-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "destinations",
+        "file": "docs-scheduled-data-exports-destinations-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 401.765625,
+          "width": 800,
+          "height": 620
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Scheduled Data Exports | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 21367
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-customer-center",
+    "url": "https://www.revenuecat.com/docs/tools/customer-center",
+    "ok": true,
+    "full": [
+      "docs-customer-center-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "self-service-ui",
+        "file": "docs-customer-center-self-service-ui-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 418.078125,
+          "width": 800,
+          "height": 360
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Customer Center | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 2703
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-ai-toolkit",
+    "url": "https://www.revenuecat.com/docs/tools/ai-toolkit",
+    "ok": true,
+    "full": [
+      "docs-ai-toolkit-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "toolkit",
+        "file": "docs-ai-toolkit-toolkit-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 0,
+          "width": 800,
+          "height": 500
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "RevenueCat AI Toolkit | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 3606
+  },
+  {
+    "vendor": "adapty",
+    "page": "home",
+    "url": "https://adapty.io/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png",
+      "home-full-4-2026-10-04.png",
+      "home-full-5-2026-10-04.png",
+      "home-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 80,
+          "y": 0,
+          "width": 1120,
+          "height": 660
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "The Best Solution to Grow Mobile In-App Purchases | Adapty",
+    "pageHeight": 20293
+  },
+  {
+    "vendor": "adapty",
+    "page": "security-and-compliance",
+    "url": "https://adapty.io/security-and-compliance/",
+    "ok": true,
+    "full": [
+      "security-and-compliance-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "soc2-type-ii",
+        "file": "security-and-compliance-soc2-type-ii-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 302.578125,
+          "width": 817,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Adapty Security & Compliance: SOC 2 Type II",
+    "pageHeight": 3512
+  },
+  {
+    "vendor": "adapty",
+    "page": "docs-migration-from-revenuecat",
+    "url": "https://adapty.io/docs/migration-from-revenuecat",
+    "ok": true,
+    "full": [
+      "docs-migration-from-revenuecat-full-1-2026-10-04.png",
+      "docs-migration-from-revenuecat-full-2-2026-10-04.png",
+      "docs-migration-from-revenuecat-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "limits",
+        "file": "docs-migration-from-revenuecat-limits-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 244,
+          "y": 9711.765625,
+          "width": 800,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Migrate from RevenueCat to Adapty | Adapty Docs",
+    "pageHeight": 11374
+  },
+  {
+    "vendor": "adapty",
+    "page": "github-adaptysdk-ios",
+    "url": "https://github.com/adaptyteam/AdaptySDK-iOS",
+    "ok": true,
+    "full": [
+      "github-adaptysdk-ios-full-1-2026-10-04.png",
+      "github-adaptysdk-ios-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-adaptysdk-ios-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 5608.703125,
+          "width": 878,
+          "height": 320
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - adaptyteam/AdaptySDK-iOS: SDK for growing mobile in-app purchases · GitHub",
+    "pageHeight": 6008
+  },
+  {
+    "vendor": "adapty",
+    "page": "blog-new-pricing-2026",
+    "url": "https://adapty.io/blog/adapty-new-pricing-2026/",
+    "ok": true,
+    "full": [
+      "blog-new-pricing-2026-full-1-2026-10-04.png",
+      "blog-new-pricing-2026-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-to-5000",
+        "file": "blog-new-pricing-2026-free-to-5000-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 48,
+          "y": 656.140625,
+          "width": 800,
+          "height": 500
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Adapty introduces new pricing: Full growth toolkit free up to $5,000 revenue",
+    "pageHeight": 4367
+  },
+  {
+    "vendor": "qonversion",
+    "page": "home",
+    "url": "https://qonversion.io/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 108,
+          "y": 114,
+          "width": 1064,
+          "height": 800
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Subscription Growth Platform | Qonversion",
+    "pageHeight": 8504
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-stripe-integration",
+    "url": "https://documentation.qonversion.io/docs/stripe-integration",
+    "ok": true,
+    "full": [
+      "docs-stripe-integration-full-1-2026-10-04.png",
+      "docs-stripe-integration-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe",
+        "file": "docs-stripe-integration-stripe-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 232,
+          "y": 152,
+          "width": 800,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Stripe Integration - Qonversion",
+    "pageHeight": 6176
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-mcp-server",
+    "url": "https://documentation.qonversion.io/docs/mcp-server",
+    "ok": true,
+    "full": [
+      "docs-mcp-server-full-1-2026-10-04.png",
+      "docs-mcp-server-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mcp-server",
+        "file": "docs-mcp-server-mcp-server-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 232,
+          "y": 254,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "MCP Server - Qonversion",
+    "pageHeight": 7887
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-migrating-from-revenuecat",
+    "url": "https://documentation.qonversion.io/docs/migrating-from-revenuecat-to-qonversion",
+    "ok": true,
+    "full": [
+      "docs-migrating-from-revenuecat-full-1-2026-10-04.png",
+      "docs-migrating-from-revenuecat-full-2-2026-10-04.png",
+      "docs-migrating-from-revenuecat-full-3-2026-10-04.png",
+      "docs-migrating-from-revenuecat-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "guide",
+        "file": "docs-migrating-from-revenuecat-guide-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 232,
+          "y": 41,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Migrating from RevenueCat - Qonversion",
+    "pageHeight": 13607
+  },
+  {
+    "vendor": "qonversion",
+    "page": "github-qonversion-ios-sdk",
+    "url": "https://github.com/qonversion/qonversion-ios-sdk",
+    "ok": true,
+    "full": [
+      "github-qonversion-ios-sdk-full-1-2026-10-04.png",
+      "github-qonversion-ios-sdk-full-2-2026-10-04.png",
+      "github-qonversion-ios-sdk-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-qonversion-ios-sdk-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 8908.390625,
+          "width": 878,
+          "height": 320
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - qonversion/qonversion-ios-sdk: iOS SDK for cross-platform in-app purchase and subscription infrastructure, revenue analytics, engagement automation, and integrations · GitHub",
+    "pageHeight": 9307
+  },
+  {
+    "vendor": "superwall",
+    "page": "home",
+    "url": "https://superwall.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png",
+      "home-full-4-2026-10-04.png",
+      "home-full-5-2026-10-04.png",
+      "home-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 0,
+          "width": 1190,
+          "height": 693.421875
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Superwall — AI powered monetization for mobile apps",
+    "pageHeight": 21843
+  },
+  {
+    "vendor": "superwall",
+    "page": "pricing",
+    "url": "https://superwall.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png",
+      "pricing-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "infrastructure-free",
+        "file": "pricing-infrastructure-free-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 69,
+          "y": 161.28125,
+          "width": 1142,
+          "height": 395.5625
+        }
+      },
+      {
+        "claim": "indie-10k-then-1-percent",
+        "file": "pricing-indie-10k-then-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 520.6328125,
+          "width": 1190,
+          "height": 740
+        }
+      },
+      {
+        "claim": "attributed-revenue-only",
+        "file": "pricing-attributed-revenue-only-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 1636.578125,
+          "width": 780,
+          "height": 609.578125
+        }
+      },
+      {
+        "claim": "sql-query-api",
+        "file": "pricing-sql-query-api-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 4557.46875,
+          "width": 1190,
+          "height": 565.09375
+        }
+      },
+      {
+        "claim": "migration-agent",
+        "file": "pricing-migration-agent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 3801.09375,
+          "width": 780,
+          "height": 438.09375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing | Superwall",
+    "pageHeight": 8788
+  },
+  {
+    "vendor": "superwall",
+    "page": "docs-pricing-faq",
+    "url": "https://superwall.com/docs/support/faq/2801653905-how-does-superwalls-pricing-work",
+    "ok": true,
+    "full": [
+      "docs-pricing-faq-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mar-definition",
+        "file": "docs-pricing-faq-mar-definition-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 240,
+          "y": 424.875,
+          "width": 800,
+          "height": 920
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "How does Superwall's pricing work? | Superwall Docs",
+    "pageHeight": 2506
+  },
+  {
+    "vendor": "superwall",
+    "page": "blog-new-pricing",
+    "url": "https://superwall.com/blog/superwalls-new-pricing-more-aligned-generous-and-transparent",
+    "ok": true,
+    "full": [
+      "blog-new-pricing-full-1-2026-10-04.png",
+      "blog-new-pricing-full-2-2026-10-04.png",
+      "blog-new-pricing-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "date",
+        "file": "blog-new-pricing-date-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 240,
+          "y": 103.671875,
+          "width": 800,
+          "height": 400
+        }
+      },
+      {
+        "claim": "indie-free-to-10k",
+        "file": "blog-new-pricing-indie-free-to-10k-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 240,
+          "y": 1756.28125,
+          "width": 800,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Superwall's New Pricing: More Aligned, Generous & Transparent | Superwall Blog",
+    "pageHeight": 8608
+  },
+  {
+    "vendor": "superwall",
+    "page": "llms-txt",
+    "url": "https://superwall.com/llms.txt",
+    "ok": true,
+    "full": [
+      "llms-txt-full-1-2026-10-04.png",
+      "llms-txt-full-2-2026-10-04.png",
+      "llms-txt-full-3-2026-10-04.png",
+      "llms-txt-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "coverage-and-limits",
+        "file": "llms-txt-coverage-and-limits-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 538,
+          "width": 920,
+          "height": 620
+        }
+      },
+      {
+        "claim": "editor-mcp",
+        "file": "llms-txt-editor-mcp-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 1136,
+          "width": 920,
+          "height": 280
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 15176
+  },
+  {
+    "vendor": "superwall",
+    "page": "features-app-to-web-checkout",
+    "url": "https://superwall.com/features/app-to-web-checkout",
+    "ok": true,
+    "full": [
+      "features-app-to-web-checkout-full-1-2026-10-04.png",
+      "features-app-to-web-checkout-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe-checkout",
+        "file": "features-app-to-web-checkout-stripe-checkout-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 240,
+          "y": 0,
+          "width": 800,
+          "height": 509.5234375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "App-to-Web Checkout | Superwall",
+    "pageHeight": 6501
+  },
+  {
+    "vendor": "superwall",
+    "page": "legal-gdpr",
+    "url": "https://superwall.com/legal/gdpr",
+    "ok": true,
+    "full": [
+      "legal-gdpr-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "processor",
+        "file": "legal-gdpr-processor-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 240,
+          "y": 249.671875,
+          "width": 800,
+          "height": 768.75
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GDPR & Superwall | Superwall",
+    "pageHeight": 3681
+  },
+  {
+    "vendor": "superwall",
+    "page": "github-superwall-ios",
+    "url": "https://github.com/superwall/Superwall-iOS",
+    "ok": true,
+    "full": [
+      "github-superwall-ios-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-superwall-ios-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 13,
+          "y": 980,
+          "width": 942,
+          "height": 460
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - superwall/Superwall-iOS: Remotely configure every aspect of your paywall and double your revenue. · GitHub",
+    "pageHeight": 3509
+  },
+  {
+    "vendor": "apphud",
+    "page": "home",
+    "url": "https://apphud.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 737
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "More than analytics for iOS and Android in-app subscriptions – Apphud",
+    "pageHeight": 10892
+  },
+  {
+    "vendor": "apphud",
+    "page": "docs-web-payments",
+    "url": "https://docs.apphud.com/docs/web-payments",
+    "ok": true,
+    "full": [
+      "docs-web-payments-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe-paddle",
+        "file": "docs-web-payments-stripe-paddle-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 300,
+          "y": 0,
+          "width": 968,
+          "height": 440
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Web Payments",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "apphud",
+    "page": "docs-llms-txt",
+    "url": "https://docs.apphud.com/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png",
+      "docs-llms-txt-full-2-2026-10-04.png",
+      "docs-llms-txt-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "web-payments-and-s3",
+        "file": "docs-llms-txt-web-payments-and-s3-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 7444,
+          "width": 920,
+          "height": 620
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 9152
+  },
+  {
+    "vendor": "apphud",
+    "page": "docs-mcp",
+    "url": "https://docs.apphud.com/docs/mcp",
+    "ok": true,
+    "full": [
+      "docs-mcp-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "public-mcp",
+        "file": "docs-mcp-public-mcp-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 244,
+          "y": 77.21875,
+          "width": 800,
+          "height": 460
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Public MCP",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "apphud",
+    "page": "github-apphudsdk",
+    "url": "https://github.com/apphud/ApphudSDK",
+    "ok": true,
+    "full": [
+      "github-apphudsdk-full-1-2026-10-04.png",
+      "github-apphudsdk-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-apphudsdk-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 13,
+          "y": 734,
+          "width": 942,
+          "height": 460
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - apphud/ApphudSDK: Build, Measure and Grow iOS subscription business · GitHub",
+    "pageHeight": 4928
+  },
+  {
+    "vendor": "stripe",
+    "page": "pricing",
+    "url": "https://stripe.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png",
+      "pricing-full-3-2026-10-04.png",
+      "pricing-full-4-2026-10-04.png",
+      "pricing-full-5-2026-10-04.png",
+      "pricing-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "card-fee",
+        "file": "pricing-card-fee-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 275.4921875,
+          "width": 800,
+          "height": 460
+        }
+      },
+      {
+        "claim": "international-cards",
+        "file": "pricing-international-cards-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 350,
+          "y": 2024.15625,
+          "width": 850,
+          "height": 460
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing & Fees",
+    "pageHeight": 22308
+  },
+  {
+    "vendor": "stripe",
+    "page": "billing-pricing",
+    "url": "https://stripe.com/billing/pricing",
+    "ok": true,
+    "full": [
+      "billing-pricing-full-1-2026-10-04.png",
+      "billing-pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "0-7-percent",
+        "file": "billing-pricing-0-7-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 303,
+          "width": 800,
+          "height": 696.625
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Stripe Billing | Pricing",
+    "pageHeight": 4874
+  },
+  {
+    "vendor": "stripe",
+    "page": "docs-checkout-quickstart",
+    "url": "https://docs.stripe.com/checkout/quickstart",
+    "ok": true,
+    "full": [
+      "docs-checkout-quickstart-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hosted-page",
+        "file": "docs-checkout-quickstart-hosted-page-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 36,
+          "width": 800,
+          "height": 584
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Build a Stripe-hosted checkout page | Stripe Documentation",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "stripe",
+    "page": "docs-billing-analytics",
+    "url": "https://docs.stripe.com/billing/subscriptions/analytics",
+    "ok": true,
+    "full": [
+      "docs-billing-analytics-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mrr-churn",
+        "file": "docs-billing-analytics-mrr-churn-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 240,
+          "y": 100.03125,
+          "width": 800,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Analytics | Stripe Documentation",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "apple",
+    "page": "subscriptions",
+    "url": "https://developer.apple.com/app-store/subscriptions/",
+    "ok": true,
+    "full": [
+      "subscriptions-full-1-2026-10-04.png",
+      "subscriptions-full-2-2026-10-04.png",
+      "subscriptions-full-3-2026-10-04.png",
+      "subscriptions-full-4-2026-10-04.png",
+      "subscriptions-full-5-2026-10-04.png",
+      "subscriptions-full-6-2026-10-04.png",
+      "subscriptions-full-7-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "85-percent-after-one-year",
+        "file": "subscriptions-85-percent-after-one-year-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 362.5,
+          "y": 2354.375,
+          "width": 800,
+          "height": 500
+        }
+      },
+      {
+        "claim": "small-business-program",
+        "file": "subscriptions-small-business-program-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 372.5,
+          "y": 2678.15625,
+          "width": 800,
+          "height": 360
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Auto-renewable Subscriptions - App Store - Apple Developer",
+    "pageHeight": 25062
+  },
+  {
+    "vendor": "apple",
+    "page": "storekit-in-app-purchase",
+    "url": "https://developer.apple.com/documentation/storekit/in-app_purchase",
+    "ok": true,
+    "full": [
+      "storekit-in-app-purchase-full-1-2026-10-04.png",
+      "storekit-in-app-purchase-full-2-2026-10-04.png",
+      "storekit-in-app-purchase-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "overview",
+        "file": "storekit-in-app-purchase-overview-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 440,
+          "y": 117.09375,
+          "width": 800,
+          "height": 600
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Apple In-App Purchase | Apple Developer Documentation",
+    "pageHeight": 8928
+  },
+  {
+    "vendor": "apple",
+    "page": "app-store-server-notifications",
+    "url": "https://developer.apple.com/documentation/appstoreservernotifications",
+    "ok": true,
+    "full": [
+      "app-store-server-notifications-full-1-2026-10-04.png",
+      "app-store-server-notifications-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "overview",
+        "file": "app-store-server-notifications-overview-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 440,
+          "y": 137.09375,
+          "width": 800,
+          "height": 600
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "App Store Server Notifications | Apple Developer Documentation",
+    "pageHeight": 4205
+  },
+  {
+    "vendor": "apple",
+    "page": "github-app-store-server-library-node",
+    "url": "https://github.com/apple/app-store-server-library-node",
+    "ok": true,
+    "full": [
+      "github-app-store-server-library-node-full-1-2026-10-04.png",
+      "github-app-store-server-library-node-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "readme",
+        "file": "github-app-store-server-library-node-readme-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 45,
+          "y": 994.59375,
+          "width": 878,
+          "height": 480
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - apple/app-store-server-library-node: The Node.js server library for the App Store Server API and App Store Server Notifications. · GitHub",
+    "pageHeight": 4548
+  },
+  {
+    "vendor": "google",
+    "page": "play-service-fees",
+    "url": "https://support.google.com/googleplay/android-developer/answer/112622?hl=en",
+    "ok": true,
+    "full": [
+      "play-service-fees-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "service-fees",
+        "file": "play-service-fees-service-fees-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 71,
+          "y": 1090.3203125,
+          "width": 800,
+          "height": 680
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Service fees - Play Console Help",
+    "pageHeight": 2606
+  },
+  {
+    "vendor": "google",
+    "page": "play-payments-policy",
+    "url": "https://support.google.com/googleplay/android-developer/answer/9858738",
+    "ok": true,
+    "full": [
+      "play-payments-policy-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "billing-system",
+        "file": "play-payments-policy-billing-system-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 71,
+          "y": 140,
+          "width": 800,
+          "height": 660
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Payments - Play Console Help",
+    "pageHeight": 2615
+  },
+  {
+    "vendor": "google",
+    "page": "play-billing-integrate",
+    "url": "https://developer.android.com/google/play/billing/integrate",
+    "ok": true,
+    "full": [
+      "play-billing-integrate-full-1-2026-10-04.png",
+      "play-billing-integrate-full-2-2026-10-04.png",
+      "play-billing-integrate-full-3-2026-10-04.png",
+      "play-billing-integrate-full-4-2026-10-04.png",
+      "play-billing-integrate-full-5-2026-10-04.png",
+      "play-billing-integrate-full-6-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "guide",
+        "file": "play-billing-integrate-guide-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 294.5,
+          "y": 322,
+          "width": 800,
+          "height": 660
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Integrate the Google Play Billing Library into your app  |  Android Developers",
+    "pageHeight": 21888
+  },
+  {
+    "vendor": "purchasely",
+    "page": "home",
+    "url": "https://www.purchasely.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png",
+      "home-full-3-2026-10-04.png",
+      "home-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 18.09375,
+          "y": 0,
+          "width": 821.828125,
+          "height": 768.609375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Purchasely: the in-app experience solution for mobile apps",
+    "pageHeight": 14267
+  },
+  {
+    "vendor": "purchasely",
+    "page": "pricing",
+    "url": "https://www.purchasely.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png",
+      "pricing-full-3-2026-10-04.png",
+      "pricing-full-4-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "no-public-price",
+        "file": "pricing-no-public-price-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 18.09375,
+          "y": 0,
+          "width": 821.828125,
+          "height": 768.609375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Purchasely: the in-app experience solution for mobile apps",
+    "pageHeight": 14267
+  },
+  {
+    "vendor": "purchasely",
+    "page": "docs",
+    "url": "https://docs.purchasely.com/",
+    "ok": true,
+    "full": [
+      "docs-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "docs-home",
+        "file": "docs-docs-home-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 244,
+          "y": 0,
+          "width": 800,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "What's Purchasely?",
+    "pageHeight": 800
+  },
+  {
+    "vendor": "purchasely",
+    "page": "github-purchasely-ios",
+    "url": "https://github.com/Purchasely/Purchasely-iOS",
+    "ok": true,
+    "full": [
+      "github-purchasely-ios-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "about",
+        "file": "github-purchasely-ios-about-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 170,
+          "width": 780,
+          "height": 635
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - Purchasely/Purchasely-iOS: Purchasely iOS SDK · GitHub",
+    "pageHeight": 2336
+  },
+  {
+    "vendor": "iaphub",
+    "page": "github-iaphub-ios-sdk",
+    "url": "https://github.com/iaphub/iaphub-ios-sdk",
+    "ok": true,
+    "full": [
+      "github-iaphub-ios-sdk-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "mit-license",
+        "file": "github-iaphub-ios-sdk-mit-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 714,
+          "width": 944,
+          "height": 690.390625
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - iaphub/iaphub-ios-sdk: The easiest way to implement IAP (In-app purchase) in your iOS app. · GitHub",
+    "pageHeight": 1578
+  },
+  {
+    "vendor": "nami",
+    "page": "pricing",
+    "url": "https://www.nami.ml/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "enterprise-only",
+        "file": "pricing-enterprise-only-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 808.03125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing — Nami ML",
+    "pageHeight": 7906
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-quickstart",
+    "url": "https://www.revenuecat.com/docs/getting-started/quickstart",
+    "ok": true,
+    "full": [
+      "docs-quickstart-full-1-2026-10-04.png",
+      "docs-quickstart-full-2-2026-10-04.png",
+      "docs-quickstart-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "platforms",
+        "file": "docs-quickstart-platforms-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 267.5,
+          "y": 429.171875,
+          "width": 800,
+          "height": 860
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "SDK Quickstart | In-App Subscriptions Made Easy – RevenueCat",
+    "pageHeight": 8019
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-llms-txt",
+    "url": "https://www.revenuecat.com/docs/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "virtual-currency",
+        "file": "docs-llms-txt-virtual-currency-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 422,
+          "width": 920,
+          "height": 340
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 1448
+  },
+  {
+    "vendor": "revenuecat",
+    "page": "docs-platform-resources-llms-txt",
+    "url": "https://www.revenuecat.com/docs/platform-resources/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-platform-resources-llms-txt-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "amazon-galaxy",
+        "file": "docs-platform-resources-llms-txt-amazon-galaxy-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 492,
+          "width": 920,
+          "height": 720
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 2000
+  },
+  {
+    "vendor": "adapty",
+    "page": "pricing",
+    "url": "https://adapty.io/pricing/",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-under-5k-then-1-percent",
+        "file": "pricing-free-under-5k-then-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 120,
+          "y": 234.96875,
+          "width": 800,
+          "height": 470
+        }
+      },
+      {
+        "claim": "add-ons",
+        "file": "pricing-add-ons-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 4908.640625,
+          "width": 1140,
+          "height": 808.8125
+        }
+      },
+      {
+        "claim": "templates-and-ab-tests",
+        "file": "pricing-templates-and-ab-tests-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 150,
+          "y": 2398.1640625,
+          "width": 980,
+          "height": 620
+        }
+      },
+      {
+        "claim": "soc2-and-residency",
+        "file": "pricing-soc2-and-residency-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 70,
+          "y": 3587.71875,
+          "width": 1140,
+          "height": 750.9375
+        }
+      },
+      {
+        "claim": "faq-what-counts",
+        "file": "pricing-faq-what-counts-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 6084.046875,
+          "width": 780,
+          "height": 560
+        }
+      },
+      {
+        "claim": "faq-when-1-percent",
+        "file": "pricing-faq-when-1-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 6162.125,
+          "width": 780,
+          "height": 560
+        }
+      },
+      {
+        "claim": "faq-migration",
+        "file": "pricing-faq-migration-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 6802.703125,
+          "width": 780,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Get free SDK and Grow Mobile In-App Purchases | Adapty",
+    "pageHeight": 7890
+  },
+  {
+    "vendor": "adapty",
+    "page": "docs-llms-txt",
+    "url": "https://adapty.io/docs/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png",
+      "docs-llms-txt-full-2-2026-10-04.png",
+      "docs-llms-txt-full-3-2026-10-04.png",
+      "docs-llms-txt-full-4-2026-10-04.png",
+      "docs-llms-txt-full-5-2026-10-04.png",
+      "docs-llms-txt-full-6-2026-10-04.png",
+      "docs-llms-txt-full-7-2026-10-04.png",
+      "docs-llms-txt-full-8-2026-10-04.png",
+      "docs-llms-txt-full-9-2026-10-04.png",
+      "docs-llms-txt-full-10-2026-10-04.png",
+      "docs-llms-txt-full-11-2026-10-04.png",
+      "docs-llms-txt-full-12-2026-10-04.png",
+      "docs-llms-txt-full-13-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "stripe-paddle",
+        "file": "docs-llms-txt-stripe-paddle-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 5028,
+          "width": 920,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 50792
+  },
+  {
+    "vendor": "qonversion",
+    "page": "pricing",
+    "url": "https://qonversion.io/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-to-7k-then-0-8-percent",
+        "file": "pricing-free-to-7k-then-0-8-percent-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 108,
+          "y": 142,
+          "width": 1064,
+          "height": 566
+        }
+      },
+      {
+        "claim": "faq-total-tracked-revenue",
+        "file": "pricing-faq-total-tracked-revenue-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 236,
+          "y": 3797.1875,
+          "width": 808,
+          "height": 736.78125
+        }
+      },
+      {
+        "claim": "plan-includes",
+        "file": "pricing-plan-includes-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 56,
+          "y": 556,
+          "width": 800,
+          "height": 776
+        }
+      },
+      {
+        "claim": "compliance-and-support",
+        "file": "pricing-compliance-and-support-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 2122.1875,
+          "width": 780,
+          "height": 560
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing for Subscription Infrastructure | Qonversion",
+    "pageHeight": 5921
+  },
+  {
+    "vendor": "qonversion",
+    "page": "docs-llms-txt",
+    "url": "https://documentation.qonversion.io/llms.txt",
+    "ok": true,
+    "full": [
+      "docs-llms-txt-full-1-2026-10-04.png",
+      "docs-llms-txt-full-2-2026-10-04.png",
+      "docs-llms-txt-full-3-2026-10-04.png",
+      "docs-llms-txt-full-4-2026-10-04.png",
+      "docs-llms-txt-full-5-2026-10-04.png",
+      "docs-llms-txt-full-6-2026-10-04.png",
+      "docs-llms-txt-full-7-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "sdks-and-stores",
+        "file": "docs-llms-txt-sdks-and-stores-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 4,
+          "y": 132,
+          "width": 920,
+          "height": 760
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "",
+    "pageHeight": 27176
+  },
+  {
+    "vendor": "qonversion",
+    "page": "revenuecat-alternative",
+    "url": "https://qonversion.io/revenuecat-alternative",
+    "ok": true,
+    "full": [
+      "revenuecat-alternative-full-1-2026-10-04.png",
+      "revenuecat-alternative-full-2-2026-10-04.png",
+      "revenuecat-alternative-full-3-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-tier-comparison",
+        "file": "revenuecat-alternative-free-tier-comparison-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 1164,
+          "width": 1280,
+          "height": 496.375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "RevenueCat Alternative | Qonversion",
+    "pageHeight": 9485
+  },
+  {
+    "vendor": "apphud",
+    "page": "pricing",
+    "url": "https://apphud.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "free-10k-pro-expert",
+        "file": "pricing-free-10k-pro-expert-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 367.3125,
+          "width": 800,
+          "height": 819.953125
+        }
+      },
+      {
+        "claim": "overage-rates",
+        "file": "pricing-overage-rates-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 3001.265625,
+          "width": 1256,
+          "height": 838
+        }
+      },
+      {
+        "claim": "grace-period",
+        "file": "pricing-grace-period-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 12,
+          "y": 3041.265625,
+          "width": 1256,
+          "height": 916
+        }
+      },
+      {
+        "claim": "seats-and-webhooks",
+        "file": "pricing-seats-and-webhooks-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 393.625,
+          "y": 433.3125,
+          "width": 800,
+          "height": 825.953125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Price - Apphud",
+    "pageHeight": 4917
+  },
+  {
+    "vendor": "apphud",
+    "page": "data-protection",
+    "url": "https://apphud.com/data-protection",
+    "ok": true,
+    "full": [
+      "data-protection-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "eu-and-us",
+        "file": "data-protection-eu-and-us-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 44,
+          "y": 1330.75,
+          "width": 1192,
+          "height": 721.5
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "How Apphud Protects Your Data - GDPR/CCPA Compliance – Apphud",
+    "pageHeight": 3546
+  },
+  {
+    "vendor": "apple",
+    "page": "app-review-guidelines",
+    "url": "https://developer.apple.com/app-store/review/guidelines/",
+    "ok": true,
+    "full": [
+      "app-review-guidelines-full-1-2026-10-04.png",
+      "app-review-guidelines-full-2-2026-10-04.png",
+      "app-review-guidelines-full-3-2026-10-04.png",
+      "app-review-guidelines-full-4-2026-10-04.png",
+      "app-review-guidelines-full-5-2026-10-04.png",
+      "app-review-guidelines-full-6-2026-10-04.png",
+      "app-review-guidelines-full-7-2026-10-04.png",
+      "app-review-guidelines-full-8-2026-10-04.png",
+      "app-review-guidelines-full-9-2026-10-04.png",
+      "app-review-guidelines-full-10-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "3-1-1-in-app-purchase",
+        "file": "app-review-guidelines-3-1-1-in-app-purchase-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 14019.515625,
+          "width": 1240,
+          "height": 520
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "App Review Guidelines - Apple Developer",
+    "pageHeight": 37513
+  },
+  {
+    "vendor": "iaphub",
+    "page": "home",
+    "url": "https://www.iaphub.com/",
+    "ok": true,
+    "full": [
+      "home-full-1-2026-10-04.png",
+      "home-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "hero",
+        "file": "home-hero-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 120,
+          "y": 0,
+          "width": 1040,
+          "height": 1181.328125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "IAPHUB | We're making In-app purchases EASY",
+    "pageHeight": 7575
+  },
+  {
+    "vendor": "iaphub",
+    "page": "pricing",
+    "url": "https://www.iaphub.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "plans",
+        "file": "pricing-plans-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 299,
+          "width": 1280,
+          "height": 1170.3125
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "IAPHUB | Pricing",
+    "pageHeight": 3040
+  },
+  {
+    "vendor": "revenuedot",
+    "page": "github-revenuedot",
+    "url": "https://github.com/revenuedot/revenuedot",
+    "ok": true,
+    "full": [
+      "github-revenuedot-full-1-2026-10-04.png",
+      "github-revenuedot-full-2-2026-10-04.png",
+      "github-revenuedot-full-3-2026-10-04.png",
+      "github-revenuedot-full-4-2026-10-04.png",
+      "github-revenuedot-full-5-2026-10-04.png",
+      "github-revenuedot-full-6-2026-10-04.png",
+      "github-revenuedot-full-7-2026-10-04.png",
+      "github-revenuedot-full-8-2026-10-04.png",
+      "github-revenuedot-full-9-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "license",
+        "file": "github-revenuedot-license-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 13,
+          "y": 1322,
+          "width": 942,
+          "height": 640
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "GitHub - revenuedot/revenuedot: The open-source RevenueCat alternative. Open-source SDKs, server, paywalls, experiments, web checkout, Customer Center, 43 charts and 36 integrations for subscription apps on iOS, Android and the web. Works with the RevenueCat SDK: switch with one line, self-host free or use RevenueDot Cloud. · GitHub",
+    "pageHeight": 35112
+  },
+  {
+    "vendor": "revenuedot",
+    "page": "pricing",
+    "url": "https://revenuedot.app/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-04.png",
+      "pricing-full-2-2026-10-04.png"
+    ],
+    "crops": [
+      {
+        "claim": "plans",
+        "file": "pricing-plans-2026-10-04.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 468.5625,
+          "width": 1280,
+          "height": 779.890625
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Pricing: RevenueDot Cloud free up to $10K a month, self-host free",
+    "pageHeight": 6483
+  }
+]
