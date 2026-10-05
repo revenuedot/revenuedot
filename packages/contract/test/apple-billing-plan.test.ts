@@ -73,6 +73,9 @@ describe("App Store billing plans: online entitlements equal offline ones", () =
       // The plan is reported the way the iOS SDK documents productPlanIdentifier: only for a non-up-front billing plan.
       expect(sub.subscriptions[productId].product_plan_identifier).toBe(billingPlanType === "MONTHLY" ? "monthly" : undefined);
       for (const e of want) expect(sub.entitlements[e].product_plan_identifier).toBe(billingPlanType === "MONTHLY" ? "monthly" : undefined);
+      // The INITIAL_PURCHASE webhook names the same entitlements (an up-front `max` matches `max:upFront`).
+      const ev = (await h.db.select().from(schema.events).where(eq(schema.events.type, "INITIAL_PURCHASE"))).map((e) => e.payload.event as Record<string, unknown>).find((e) => e.app_user_id === user);
+      expect([...((ev?.entitlement_ids ?? []) as string[])].sort(), `${productId} ${billingPlanType} webhook`).toEqual(want);
     }
   });
 
@@ -81,6 +84,8 @@ describe("App Store billing plans: online entitlements equal offline ones", () =
     const sub = (await res.json()).subscriber;
     expect(activeOnline(sub)).toEqual(["pro"]);
     expect(sub.entitlements.pro).toMatchObject({ product_identifier: "pro_monthly", product_plan_identifier: "monthly" });
+    // Offline too: iOS looks the purchase up as pro_monthly:monthly, which the mapping adds for every bare subscription.
+    expect(iosLookup(await mapping(), "pro_monthly", "monthly")).toEqual(["pro"]);
   });
 
   it("App Store Server Notifications: a renewal on the monthly plan moves the chain to the plan's entitlements", async () => {

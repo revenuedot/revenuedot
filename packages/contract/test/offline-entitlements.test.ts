@@ -52,11 +52,13 @@ async function online(productId: string, plan: string | null, oneTime = false, s
 }
 
 describe("product entitlement mapping from the SDK fixtures' catalogs", () => {
-  it("an App Store catalog produces exactly the iOS fixture", async () => {
+  it("an App Store catalog produces the iOS fixture, plus a product:monthly key per subscription for iOS 26.4 monthly plans", async () => {
     await catalog({ id: "fx_ios", type: "app_store", key: "appl_fx" }, [
       ["com.revenuecat.foo_1", "subscription", ["pro_1"]], ["com.revenuecat.foo_2", "subscription", ["pro_1", "pro_2"]], ["com.revenuecat.foo_3", "subscription", ["pro_2"]],
     ]);
-    expect(await mappingFor("appl_fx")).toEqual(fx("ios/resp-product-entitlement-mapping.json"));
+    const want = fx("ios/resp-product-entitlement-mapping.json");
+    for (const [k, e] of Object.entries({ ...want })) want[`${k}:monthly`] = { product_identifier: k, base_plan_id: "monthly", entitlements: e.entitlements };
+    expect(await mappingFor("appl_fx")).toEqual(want);
   });
 
   it("a Play catalog produces the Android fixture, except that the bare subscription id carries every base plan's entitlements", async () => {
@@ -111,10 +113,11 @@ describe("offline entitlements match what the server grants online", () => {
     expect(m["plus:monthly"]).toEqual({ product_identifier: "plus", base_plan_id: "monthly", entitlements: ["plus_extra", "plus"] });
     expect(await online("plus", "monthly")).toEqual(iosLookup(m, "plus", "monthly"));
     expect(await online("plus", null)).toEqual(iosLookup(m, "plus"));
-    // A product stored only bare and bought on the monthly plan unlocks online; iOS looks up basic_monthly:monthly offline
-    // and finds nothing. Store the product as basic_monthly:monthly too to keep it offline (docs: offline entitlements).
+    // A subscription stored only bare and bought on the monthly plan: iOS looks up basic_monthly:monthly offline, which the
+    // mapping adds with the bare product's entitlements, so it unlocks offline as it does online.
+    expect(m["basic_monthly:monthly"]).toEqual({ product_identifier: "basic_monthly", base_plan_id: "monthly", entitlements: ["basic"] });
     expect(await online("basic_monthly", "monthly")).toEqual(["basic"]);
-    expect(iosLookup(m, "basic_monthly", "monthly")).toEqual([]);
+    expect(iosLookup(m, "basic_monthly", "monthly")).toEqual(["basic"]);
   });
 
   it("Android: equal for a single base plan, a superset for several (the bare id holds the union, so nobody loses access)", async () => {

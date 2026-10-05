@@ -103,7 +103,11 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   const priceUsd = await usdValue(db, p.price, p.purchaseDate, ctx.fetch);
   const values = {
     projectId: ctx.projectId, customerId: owner.id, appId: ctx.appId, store: p.store, storeKey: p.storeKey,
-    productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, isSandbox: p.isSandbox,
+    productIdentifier: p.productIdentifier,
+    // `undefined` (e.g. an unsigned StoreKit 1 receipt, which carries no billing plan) keeps the plan we know for the same product.
+    productPlanIdentifier: p.productPlanIdentifier !== undefined ? p.productPlanIdentifier
+      : existing?.productIdentifier === p.productIdentifier ? existing.productPlanIdentifier ?? null : null,
+    isSandbox: p.isSandbox,
     purchaseDate: p.purchaseDate, originalPurchaseDate: p.originalPurchaseDate, expiresDate: p.expiresDate, periodType: p.periodType,
     ownershipType: p.ownershipType ?? "PURCHASED", unsubscribeDetectedAt: p.unsubscribeDetectedAt ?? null,
     billingIssuesDetectedAt: p.billingIssuesDetectedAt ?? null, gracePeriodExpiresDate: p.gracePeriodExpiresDate ?? null,
@@ -146,7 +150,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
   }).where(eq(customers.id, owner.id));
 
   const subject = {
-    store: p.store, productId: p.productIdentifier, productPlanId: p.productPlanIdentifier, periodType: p.periodType,
+    store: p.store, productId: p.productIdentifier, productPlanId: values.productPlanIdentifier, periodType: p.periodType,
     purchasedAt: p.purchaseDate, expiresAt: p.expiresDate, gracePeriodExpiresAt: p.gracePeriodExpiresDate, autoResumeAt: p.autoResumeDate,
     transactionId: p.storeTransactionId, originalTransactionId: p.originalTransactionId ?? p.storeKey, isSandbox: p.isSandbox,
     isFamilyShare: p.ownershipType === "FAMILY_SHARED", countryCode: p.countryCode, price: p.price, priceUsd,
@@ -174,7 +178,7 @@ async function applySubscription(db: DB, customer: CustomerRow, p: Extract<Verif
         await refundSeen(db, { projectId: ctx.projectId, appId: ctx.appId, customerId: owner.id, store: p.store, transactionId: p.storeTransactionId, originalTransactionId: p.originalTransactionId ?? p.storeKey, productId: p.productIdentifier, sandbox: p.isSandbox, amountUsd: priceUsd ?? null, at: p.refundedAt ?? ctx.now, now: ctx.now });
       }
       if (kind === "purchase" || kind === "renewal" || kind === "trial") {
-        await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, productPlanIdentifier: p.productPlanIdentifier ?? null, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
+        await grantForPurchase(db, { projectId: ctx.projectId, appId: ctx.appId, customer: owner, appUserId: ctx.appUserId, store: p.store, sandbox: p.isSandbox, productIdentifier: p.productIdentifier, productPlanIdentifier: values.productPlanIdentifier, trial: kind === "trial", transactionId: p.storeTransactionId, now: ctx.now });
       }
     }
   }

@@ -1,12 +1,12 @@
-import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
-import { newId } from "@revenuedot/core";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { newId, productKeysFor } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import { notMoving } from "./archive/moving.js";
 import type { AppRecord } from "../context.js";
 import { findCustomer, type CustomerRow } from "../repo/customers.js";
 import { appleApiFor } from "../stores/apple/index.js";
 import { AppleApiClientError, type AppleEnv } from "../stores/apple/api.js";
-import type { AppleTransaction } from "../stores/apple/map.js";
+import { billingPlanOf, type AppleTransaction } from "../stores/apple/map.js";
 import type { StoreAdapter } from "../stores/types.js";
 import { contextsFor, type CustomerData } from "./customer-context.js";
 import { usdValue } from "./fx.js";
@@ -229,12 +229,14 @@ async function customerFor(db: DB, projectId: string, store: string, tx: { trans
 }
 
 /** Customer facts for the payload, in the request's environment (sandbox requests count sandbox purchases). */
-async function customerFacts(db: DB, projectId: string, appId: string, d: CustomerData, productId: string, transactionId: string, sandbox: boolean): Promise<NonNullable<ConsumptionInput["customer"]>> {
+async function customerFacts(db: DB, projectId: string, appId: string, d: CustomerData, productId: string, plan: string | null, transactionId: string, sandbox: boolean): Promise<NonNullable<ConsumptionInput["customer"]>> {
   const tx = d.tx.filter((t) => t.sandbox === sandbox);
   const purchased = tx.filter((t) => t.usd > 0).reduce((s, t) => s + t.usd, 0);
   const refunded = -tx.filter((t) => t.kind === "refund").reduce((s, t) => s + t.usd, 0);
   let currency: NonNullable<ConsumptionInput["customer"]>["currency"] = null;
-  const [prod] = await db.select().from(schema.products).where(and(eq(schema.products.projectId, projectId), eq(schema.products.appId, appId), eq(schema.products.storeIdentifier, productId))).limit(1);
+  const keys = productKeysFor({ store: "app_store", productIdentifier: productId, productPlanIdentifier: plan });
+  const prods = await db.select().from(schema.products).where(and(eq(schema.products.projectId, projectId), eq(schema.products.appId, appId), inArray(schema.products.storeIdentifier, keys)));
+  const prod = keys.map((k) => prods.find((p) => p.storeIdentifier === k)).find(Boolean);
   if (prod) {
     const vcs = await db.select().from(schema.virtualCurrencies).where(eq(schema.virtualCurrencies.projectId, projectId));
     for (const vc of vcs) {
@@ -326,7 +328,7 @@ export async function handleConsumptionRequest(deps: RefundDeps, app: AppRecord,
   else if (!settings.customer_consented) { consumptionStatus = "skipped"; lastError = "Customer consent is not confirmed in Refund Control settings, so Apple gets no consumption information."; }
   else if (tx.environment !== "Production" && tx.environment !== "Sandbox") { consumptionStatus = "skipped"; lastError = `Apple's ${tx.environment} environment has no App Store Server API.`; }
   else {
-    const facts = data ? await customerFacts(db, app.projectId, app.id, data, tx.productId, tx.transactionId, sandbox) : null;
+    const facts = data ? await customerFacts(db, app.projectId, app.id, data, tx.productId, billingPlanOf(tx), tx.transactionId, sandbox) : null;
     const input: ConsumptionInput = {
       now: now.getTime(), customerConsented: true, preference: decision.preference, appAccountToken: tx.appAccountToken ?? null,
       productType: PRODUCT_TYPE[tx.type] ?? "subscription", purchasedAt: tx.purchaseDate, expiresAt: await nonRenewingExpiry(db, app.projectId, app.id, tx), customer: facts,

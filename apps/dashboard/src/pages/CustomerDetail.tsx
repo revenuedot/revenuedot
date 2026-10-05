@@ -384,8 +384,10 @@ export function CustomerDetail() {
   const entName = (k: string) => ents.find((e) => e.lookup_key === k)?.display_name ?? k;
   const products = d.products.data?.items ?? [];
   const productById = (pidv: string | null) => products.find((p) => p.id === pidv);
-  // `product:plan` (a Play base plan, an App Store billing plan) before the bare product, the way purchases match the catalog.
-  const productName = (storeId: string) => (products.find((p) => p.store_identifier === storeId) ?? products.find((p) => p.store_identifier === storeId.split(":")[0]))?.display_name ?? storeId;
+  // The catalog product a purchase matches, as the server does (core productKeysFor): `product:plan` (a Play base plan, an
+  // App Store billing plan), the bare product, then `product:upFront` (App Store purchases paid up front).
+  const productName = (id: string, plan?: string | null) =>
+    [...(plan ? [`${id}:${plan}`] : []), id, `${id}:upFront`].map((k) => products.find((p) => p.store_identifier === k)).find(Boolean)?.display_name ?? id;
   const offerings = d.offerings.data?.items ?? [];
   const currentOffering = offerings.find((o) => o.is_current);
 
@@ -465,7 +467,7 @@ export function CustomerDetail() {
                           <div style={{ minWidth: 0 }}>
                             <b>{e.display_name}</b> <span className="mono subtle" style={{ fontSize: 12 }}>{e.lookup_key}</span>
                             <span className="dt">
-                              {e.source === "promotional" ? "Granted" : <>From {productName(e.product_plan_identifier ? `${e.product_identifier}:${e.product_plan_identifier}` : e.product_identifier ?? "")}</>}
+                              {e.source === "promotional" ? "Granted" : <>From {productName(e.product_identifier ?? "", e.product_plan_identifier)}</>}
                               {" · "}{e.expires_at ? <>{e.expires_at > Date.now() + 50 * 365 * DAY ? "never expires" : <>expires <span title={fmt.dateTime(e.expires_at)}>{fmt.date(e.expires_at)}</span> ({relative(e.expires_at)})</>}</> : "never expires"}
                               {grant && e.source !== "promotional" && <> · also granted until {fmt.date(grant.expires_at)}</>}
                             </span>
