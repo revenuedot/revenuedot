@@ -1,0 +1,37 @@
+---
+// "See it": the 14-second dashboard tour from Cloudflare Stream, then the real feature shots and clips that back the
+// RevenueDot column of a comparison (src/data/visuals.ts). The Stream player loads lazily with our own poster.
+import Visual from "./Visual.astro";
+import { playerUrl, VIDEOS } from "../lib/videos.mjs";
+import type { FeatureKey } from "../data/visuals";
+interface Props {
+  features: FeatureKey[];
+  title?: string;
+  intro?: string;
+  video?: keyof typeof VIDEOS | null;
+}
+const { features, title = "What the RevenueDot column looks like", intro = "Real captures of the dashboard with example data, not mockups. Every feature below is in the open-source server today.", video = "revenuedot-dashboard-tour" } = Astro.props;
+---
+<section class="section" id="see-it">
+  <div class="wrap">
+    <div class="head"><p class="label">See it</p><h2 class="h2 sm">{title}</h2><p class="lede">{intro}</p></div>
+    {video && (
+      <div class="tour">
+        <div class="shot stream">
+          <iframe src={playerUrl(video)} title={VIDEOS[video].title} loading="lazy" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+        </div>
+        <p class="tiny caption">{VIDEOS[video].title}.</p>
+      </div>
+    )}
+    <div class="pair">
+      {features.map((f) => <div class="item"><Visual name={f} clip titled width={600} /></div>)}
+    </div>
+  </div>
+</section>
+<style>
+  .tour { margin-bottom: 32px; }
+  .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 24px; }
+  .item { min-width: 0; }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+  @media (max-width: 900px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+</style>

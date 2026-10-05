@@ -6,6 +6,7 @@ import Faq from "../components/Faq.astro";
 import CtaBand from "../components/CtaBand.astro";
 import { SDKS } from "../lib/sdks";
 import { FAQ_NO_LOSS, FAQ_GOOGLE, FAQ_CHANGE_APP, FAQ_STORES, FAQ_SELF_HOST } from "../lib/faq";
+import Visual from "../components/Visual.astro";
 import { SITE } from "../site";
 
 const faq = [
@@ -81,6 +82,7 @@ npx revenuedot import verify --rc-project proj... --to https://api.revenuedot.ap
 
 # Print the cutover steps with your own app ids and URLs
 npx revenuedot import plan --to https://api.revenuedot.app`} />
+        <Visual name="importer" width={640} />
       </div>
     </div>
   </section>
@@ -108,6 +110,7 @@ https://api.revenuedot.app/v1/notifications/google/<app id>
 # RevenueDot dashboard → Apps → your app → Forwarding URL
 # paste the notification URL RevenueCat gave you`} />
         <p class="tiny">The dashboard shows each app's exact notification URL and when the last notification arrived.</p>
+        <Visual name="dual-run" width={640} />
       </div>
     </div>
   </section>

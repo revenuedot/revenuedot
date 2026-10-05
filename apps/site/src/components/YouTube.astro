@@ -1,0 +1,48 @@
+---
+// A third-party YouTube video (src/data/third-party-videos.ts) that loads nothing from YouTube until the reader presses
+// play: a lazy poster from i.ytimg.com, then the privacy-enhanced embed. One line under it says who made it and when.
+import { THIRD_PARTY_VIDEOS } from "../data/third-party-videos";
+interface Props { url: string }
+const { url } = Astro.props;
+const v = THIRD_PARTY_VIDEOS.find((t) => t.url === url);
+if (!v) throw new Error(`Unknown third-party video ${url}`);
+const id = new URL(v.url).searchParams.get("v");
+if (!id) throw new Error(`No video id in ${v.url}`);
+const embed = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`;
+const published = new Date(v.published + "T00:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+---
+<figure class="yt">
+  <div class="shot stream" data-yt={embed} data-title={v.title}>
+    <button type="button" class="play" aria-label={`Play on YouTube: ${v.title}`}>
+      <img src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" width="480" height="360" loading="lazy" decoding="async" />
+      <span class="badge"><span class="tri" aria-hidden="true"></span>Play on YouTube · {v.length}</span>
+    </button>
+  </div>
+  <figcaption class="tiny">
+    <strong><a href={v.url} rel="noopener nofollow" target="_blank">{v.title}</a></strong> by {v.channel} ({v.channelSize}), {published}. Not made by or for RevenueDot. {v.reason}
+  </figcaption>
+</figure>
+<script>
+  document.querySelectorAll<HTMLElement>("[data-yt]").forEach((box) => {
+    box.querySelector("button.play")?.addEventListener("click", () => {
+      const f = document.createElement("iframe");
+      f.src = box.dataset.yt!;
+      f.title = box.dataset.title ?? "YouTube video";
+      f.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+      f.setAttribute("allowfullscreen", "");
+      f.referrerPolicy = "strict-origin-when-cross-origin";
+      box.replaceChildren(f);
+    }, { once: true });
+  });
+</script>
+<style>
+  .yt { margin: 0; display: grid; gap: 12px; }
+  .play { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: pointer; position: relative; }
+  .play img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; background: rgba(0, 0, 0, .82); color: #fff; font: 600 14px/1 var(--font); letter-spacing: -0.01em; border: 1px solid rgba(255, 255, 255, .4); white-space: nowrap; }
+  .tri { width: 0; height: 0; border-style: solid; border-width: 7px 0 7px 12px; border-color: transparent transparent transparent #fff; }
+  .play:hover .badge, .play:focus-visible .badge { background: #000; border-color: #fff; }
+  figcaption { color: var(--fg-3); max-width: 760px; }
+  figcaption strong { color: var(--fg-2); }
+  figcaption a { color: inherit; }
+</style>

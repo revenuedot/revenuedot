@@ -4,6 +4,8 @@ import type { Block } from "../data/types";
 import Md from "./Md.astro";
 import Code from "./Code.astro";
 import Shot from "./Shot.astro";
+import Evidence from "./Evidence.astro";
+import Visual from "./Visual.astro";
 import { shot } from "../lib/shots";
 import { md } from "../lib/md";
 interface Props { blocks: Block[] }
@@ -39,7 +41,9 @@ const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^
             {b.table.caption && <Md class="tiny caption" text={b.table.caption} />}
           </div>
         )}
-        {b.shot && <Shot light={shot(b.shot.src)} alt={b.shot.alt} caption={b.shot.caption} />}
+        {b.evidence && b.evidence.length > 0 && <Evidence keys={b.evidence} layout="grid" width={300} />}
+        {b.shot && <Shot light={shot(b.shot.src)} dark={b.shot.dark ? shot(b.shot.dark) : undefined} alt={b.shot.alt} caption={b.shot.caption} />}
+        {b.visual && <Visual name={b.visual} clip={b.clip} />}
       </div>
     </div>
   </section>

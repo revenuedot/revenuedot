@@ -1,6 +1,7 @@
 // Content types for the SEO and AEO landing pages. Writing rules: apps/site/CONTENT.md.
 // Text fields accept a tiny inline markdown subset: **bold**, `code` and [text](url). Nothing else.
 import type { Faq } from "../site";
+import type { FeatureKey as VisualKey } from "./visuals";
 
 /** A source for a claim about another company: label + URL. Every vendor fact needs one. */
 export type Source = { label: string; url: string };
@@ -12,7 +13,13 @@ export type Step = { name: string; text: string };
 export type Sample = { title: string; label: string; code: string };
 
 /** A screenshot from docs/assets (repo root) or apps/site/src/assets/screens, by file name without folder. */
-export type ShotRef = { src: string; alt: string; caption?: string };
+export type ShotRef = { src: string; alt: string; caption?: string; /** The dark capture, shown with a dark colour scheme. */ dark?: string };
+
+/** An evidence crop in src/data/evidence.ts, as "Vendor/page/claim", e.g. "RevenueCat/pricing/free-to-2500-then-1-percent". */
+export type EvidenceKey = string;
+
+/** A first-party visual in src/data/visuals.ts, by feature key. */
+export type { FeatureKey as VisualKey } from "./visuals";
 
 /** A body section. Use only the fields you need. */
 export type Block = {
@@ -24,6 +31,11 @@ export type Block = {
   code?: Sample;
   shot?: ShotRef;
   table?: { head: string[]; rows: string[][]; caption?: string };
+  /** Evidence crops shown under the table or text, visible, with their dated captions and source links. */
+  evidence?: EvidenceKey[];
+  /** A first-party feature visual (shot, and its clip when `clip` is set) shown after the text. */
+  visual?: VisualKey;
+  clip?: boolean;
 };
 
 /** Feature, store, SDK and solution pages: /features/x, /stores/x, /sdks/x, /solutions/x. */
@@ -130,10 +142,15 @@ export type ComparePage = {
   answer: string;
   /** "Choose X if" lists, one per column. */
   choose: { name: string; reasons: string[] }[];
-  /** Rows: topic, one cell per column, and the sources for the cells about other vendors. */
-  rows: { topic: string; cells: string[]; sources: Source[] }[];
+  /** Rows: topic, one cell per column, the sources for the cells about other vendors, the evidence crops that show the
+   * cited facts (one per claim), and the RevenueDot visual for the RevenueDot cell. */
+  rows: { topic: string; cells: string[]; sources: Source[]; evidence?: EvidenceKey[]; visual?: VisualKey }[];
   /** Price table at monthly tracked revenue levels; cells are strings like "$0" or "$1,000". */
-  price?: { intro: string; head: string[]; rows: string[][]; sources: Source[] };
+  price?: { intro: string; head: string[]; rows: string[][]; sources: Source[]; evidence?: EvidenceKey[] };
+  /** The "See it" block: the dashboard tour video plus these feature visuals (clips where they exist). */
+  seeIt?: VisualKey[];
+  /** A third-party YouTube video from src/data/third-party-videos.ts, by URL; at most one per page. */
+  video?: string;
   blocks: Block[];
   faq: Faq[];
   /** Month the vendor facts were checked, e.g. "October 2026". */
@@ -155,6 +172,11 @@ export type Alternative = {
   sources: Source[];
   /** Our own comparison page, if any. */
   compare?: string;
+  /** Evidence crops: the vendor's homepage hero and its pricing page. */
+  evidence?: EvidenceKey[];
+  /** For RevenueDot's own entry: a feature shot and a clip. */
+  visual?: VisualKey;
+  clip?: VisualKey;
 };
 
 /** /errors/x: one RevenueCat SDK error code (PurchasesErrorCode), explained for apps on RevenueDot or RevenueCat. */
