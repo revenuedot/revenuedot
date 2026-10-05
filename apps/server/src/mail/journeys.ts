@@ -300,11 +300,11 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       look: "rich",
       subject: c.bills && save > 0 ? `Ready to turn RevenueCat off? You could save ${usd(save)} a year` : "Ready to turn RevenueCat off?",
       preheader: c.bills ? `At your last 7 days' pace: ${usd(rdM)} a month on RevenueDot, ${usd(rcM)} at RevenueCat's list price.` : "Your cutover checklist.",
-      heading: "A week of live sales on RevenueDot",
+      heading: c.liveSince ? `Live sales on RevenueDot since ${c.liveSince}` : "Live sales on RevenueDot",
       blocks: [
         ...(c.bills && save > 0 ? [{ t: "stat", value: usd(save), label: `saved a year: ${usd(rdM)} a month on RevenueDot against ${usd(rcM)} at RevenueCat's list price, at your last 7 days' pace`, tone: "up" } as Block] : []),
-        { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. Turn RevenueCat off when all three are true:` },
-        { t: "picture", shot: "apps", href: dash(c, "/apps"), caption: "Your apps and their status." },
+        { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot${c.liveSince ? ` since ${c.liveSince}` : ""}, and your app update is reaching your customers. Turn RevenueCat off when all three are true:` },
+        { t: "picture", shot: "overview", href: dash(c, "/overview"), caption: "Revenue on RevenueDot, updated as sales come in." },
         { t: "checklist", items: [{ title: "The numbers match", text: "The comparison in the cutover checklist shows no differences." }, { title: "Most users have updated", text: "Older app versions still talk to RevenueCat." }, { title: "Webhooks move together", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." }] },
         { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
       ],
@@ -321,7 +321,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       blocks: [...rows, { t: "lead", text: app
         ? "RevenueDot now records sales alongside RevenueCat, and a build of your app talks to RevenueDot. Let both run for a few days, then compare them."
         : "Store notifications reach RevenueDot, so it records sales alongside RevenueCat. Next, ship the app update that points your app at RevenueDot. Older versions keep using RevenueCat until you turn it off." },
-        { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "Each app's page shows the last notification forwarded to RevenueCat." },
+        { t: "picture", shot: "forwarding", href: dash(c, "/apps"), caption: "The forwarding field on each app's page." },
         app ? { t: "button", label: "How to compare", url: `${docs("migrate/importer")}#check-the-result-with-import-verify` }
           : { t: "button", label: "Plan the app update", url: docs("migrate/sdk-changes") }],
     };

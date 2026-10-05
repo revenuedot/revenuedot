@@ -26,7 +26,7 @@ function facts(o: Partial<Facts> = {}): Facts {
     firstAppAt: null, testPurchaseAt: null, sdkFirstAt: null, sdkLastAt: null, sdk: null, storeConnected: false, liveAt: null, lastSaleAt: null,
     firstSale: null, rcImportAt: null, importedCustomers: 0, paywallPublishedAt: null, experimentStartedAt: null, teammates: 0, recoveryOn: false,
     assistantConnected: false, plan: "free", planSince: null, canceledAt: null, tracked: 0, free100At: null, alertAt: null, lastNotificationAt: null,
-    referralJoinedAt: null, overTracked: 0, sdkCustomers: 0, sent: new Map(), ...o,
+    referralJoinedAt: null, overTracked: 0, sdkCustomers: 0, customers: 0, sent: new Map(), ...o,
   };
 }
 const sent = (...steps: [StepId, number][]) => new Map<StepId, number>(steps);
@@ -107,6 +107,10 @@ describe("picking the step", () => {
     // Not while only a test build talks to RevenueDot; still on time when the update reaches customers weeks later.
     expect(pickStep(facts({ ...f, sdkCustomers: 2, sent: sent(["first_sale", WED - 8 * D]) }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...f, liveAt: WED - 40 * D }), WED, cfg)).toBe("cutover");
+    // A small app needs a tenth of its customers on the update (at least 3), not 25.
+    expect(pickStep(facts({ ...f, customers: 40, sdkCustomers: 4 }), WED, cfg)).toBe("cutover");
+    expect(pickStep(facts({ ...f, customers: 40, sdkCustomers: 2 }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...f, customers: 250, sdkCustomers: 24 }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...f, sent: sent(["cutover", WED - 2 * D]) }), WED, cfg)).toBeNull();
   });
 
@@ -329,7 +333,9 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     await s!.db.update(schema.projects).set({ rcImportAt: now }).where(eq(schema.projects.id, p!.id));
     expect((await loadFacts(s!.db, [u!.id], now, SINCE))[0]!.sdkCustomers).toBe(3);
     await s!.db.insert(schema.customers).values(customers(30, "app", "5.91.0"));
-    expect((await loadFacts(s!.db, [u!.id], now, SINCE))[0]!.sdkCustomers).toBe(25);
+    const f = (await loadFacts(s!.db, [u!.id], now, SINCE))[0]!;
+    expect(f.sdkCustomers).toBe(25);
+    expect(f.customers).toBe(73);
   });
 
   it("never counts an imported purchase as a live sale, and gives a failed send's step back", async () => {

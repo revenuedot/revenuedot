@@ -49,8 +49,8 @@ export interface Facts {
   /** The tracked revenue of the month the free_100 email was about. */
   overTracked: number;
   alertAt: number | null; lastNotificationAt: number | null;
-  /** Switchers waiting for the cutover email: customers whose app called RevenueDot, counted up to 25 (else 0). */
-  sdkCustomers: number; referralJoinedAt: number | null;
+  /** Switchers waiting for the cutover email: customers whose app called RevenueDot (up to 25) and all customers (up to 250); else 0. */
+  sdkCustomers: number; customers: number; referralJoinedAt: number | null;
   sent: Map<StepId, number>;
 }
 
@@ -72,6 +72,8 @@ interface Step {
 
 const after = (t: number | null, ms: number) => (t === null ? null : t + ms);
 const notYet = (f: Facts, ...steps: StepId[]) => steps.every((s) => !f.sent.has(s));
+/** Customers seen through the SDK that show the app update reached real users. */
+const updateShipped = (f: Facts) => Math.max(3, Math.min(25, Math.ceil(f.customers * 0.1)));
 const migrating = (f: Facts) => f.path === "revenuecat" || f.rcImportAt !== null;
 /** The plan, in priority order: when two steps are due, the first one wins and the other waits. */
 export const STEPS: Step[] = [
@@ -82,8 +84,9 @@ export const STEPS: Step[] = [
   { id: "first_sale", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => f.liveAt },
   { id: "standard_welcome", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
   // Switching from RevenueCat: the cutover, after a week of live sales and once the app update reaches real customers
-  // (25 customers seen through the SDK; a test build brings one or two). The rollout can take weeks, so it stays fresh for 60 days.
-  { id: "cutover", freshFor: 60 * D, due: (f, now) => (migrating(f) && f.liveAt && f.sdkCustomers >= 25 && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
+  // (a tenth of them through the SDK, at least 3 and at most 25; a test build brings one or two). The rollout can take weeks,
+  // so it stays fresh for 60 days.
+  { id: "cutover", freshFor: 60 * D, due: (f, now) => (migrating(f) && f.liveAt && f.sdkCustomers >= updateShipped(f) && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
   { id: "side_by_side", onboarding: true, freshFor: 7 * D, due: (f) => (f.rcImportAt && !f.liveAt ? f.rcImportAt + D : null) },
   // Building an app (or already selling with your own code): the next missing step.
   { id: "store_keys", onboarding: true, freshFor: 10 * D, due: (f) => (f.sdkFirstAt && !f.storeConnected && !f.liveAt ? f.sdkFirstAt + D : null) },
@@ -200,6 +203,10 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
           AND NOT EXISTS (SELECT 1 FROM journey_sends js WHERE js.user_id = u.id AND js.step = 'cutover')
         THEN (SELECT count(*) FROM (SELECT 1 FROM customers c JOIN owned o ON o.id = c.project_id WHERE o.uid = u.id AND c.last_seen_sdk_version IS NOT NULL LIMIT 25) x)
         ELSE 0 END AS sdk_customers,
+      CASE WHEN (u.journey_path = 'revenuecat' OR EXISTS (SELECT 1 FROM owned o WHERE o.uid = u.id AND o.rc_import_at IS NOT NULL))
+          AND NOT EXISTS (SELECT 1 FROM journey_sends js WHERE js.user_id = u.id AND js.step = 'cutover')
+        THEN (SELECT count(*) FROM (SELECT 1 FROM customers c JOIN owned o ON o.id = c.project_id WHERE o.uid = u.id LIMIT 250) x)
+        ELSE 0 END AS customers,
       (SELECT min(pw.published_at) FROM paywalls pw JOIN owned o ON o.id = pw.project_id WHERE o.uid = u.id) AS paywall_published_at,
       (SELECT min(e.started_at) FROM experiments e JOIN owned o ON o.id = e.project_id WHERE o.uid = u.id) AS experiment_started_at,
       (SELECT count(*) FROM memberships m JOIN owned o ON o.id = m.project_id WHERE o.uid = u.id AND m.user_id <> u.id)
@@ -249,7 +256,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       plan, planSince: plan === "standard" && (ts(r.ba_started) ?? 0) >= sinceMs ? ts(r.ba_started) : null,
       canceledAt: plan === "free" && r.ba_sub && r.ba_started && String(r.ba_status) === "canceled" ? ts(r.ba_updated_at) : null,
       overTracked: Number(r.over_tracked ?? 0),
-      tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at), sdkCustomers: Number(r.sdk_customers ?? 0),
+      tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at), sdkCustomers: Number(r.sdk_customers ?? 0), customers: Number(r.customers ?? 0),
       lastNotificationAt: ts(r.last_notification_at), referralJoinedAt: ts(r.referral_joined_at), sent,
     };
   });
