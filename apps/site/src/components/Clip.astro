@@ -1,28 +1,63 @@
 ---
-// A short silent product clip recorded from the real dashboard (public/clips, made by recording the seeded demo app).
-// Plays muted in a loop while on screen, pauses off screen; with reduced motion it shows the poster and controls.
-interface Props { name: string; alt: string; caption?: string }
-const { name, alt, caption } = Astro.props;
+// A short silent loop recorded from the real dashboard (public/clips/<name>.mp4, made by recording the seeded demo app).
+// The poster is the page's real, optimized image at the video's exact size, so layout never shifts and the poster is the
+// largest-paint candidate. The video lies over it at opacity 0, has no source until the page has loaded and it is near
+// the screen, plays while a third of it is visible and fades in on its first frame. With reduced motion, Save-Data or a
+// 2G connection the video is never requested and the poster stays.
+import { getImage } from "astro:assets";
+import type { ImageMetadata } from "astro";
+interface Props { name: string; alt: string; caption?: string; sizes?: string }
+const { name, alt, caption, sizes = "(max-width: 1264px) 100vw, 1200px" } = Astro.props;
+// Posters of the versioned loops live in src/assets/clips and go through the image pipeline; older clips keep theirs in public/clips.
+const posters = import.meta.glob<{ default: ImageMetadata }>("../assets/clips/*.webp", { eager: true });
+const source = posters[`../assets/clips/${name}.webp`]?.default;
+const widths = [640, 960, 1280, 1440];
+const made = source ? await Promise.all(widths.filter((w) => w <= source.width).map((w) => getImage({ src: source, width: w, format: "webp", quality: 78 }))) : [];
+const width = source?.width ?? 1280;
+const height = source?.height ?? 800;
+const src = made.length ? made[Math.min(2, made.length - 1)]!.src : `/clips/${name}.webp`;
+const srcset = made.length ? made.map((i) => `${i.src} ${i.options.width}w`).join(", ") : undefined;
 ---
 <figure class="clip">
-  <div class="shot">
-    <video data-clip muted loop playsinline preload="none" poster={`/clips/${name}.webp`} width="1280" height="800" aria-label={alt}>
-      <source src={`/clips/${name}.mp4`} type="video/mp4" />
-    </video>
+  <div class="shot frame" style={`aspect-ratio: ${width} / ${height}`}>
+    <img src={src} srcset={srcset} sizes={srcset ? sizes : undefined} alt={alt} width={width} height={height} loading="lazy" decoding="async" />
+    <video data-clip data-src={`/clips/${name}.mp4`} muted loop playsinline preload="none" disablepictureinpicture aria-hidden="true" tabindex="-1" width={width} height={height}></video>
   </div>
   {caption && <figcaption class="caption tiny">{caption}</figcaption>}
 </figure>
-<script is:inline>
-  (() => {
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    document.querySelectorAll("video[data-clip]:not([data-ready])").forEach((v) => {
-      v.dataset.ready = "1";
-      if (reduce || !("IntersectionObserver" in window)) { v.controls = true; return; }
-      new IntersectionObserver(([e]) => { if (e.isIntersecting) { v.preload = "auto"; v.play().catch(() => {}); } else v.pause(); }, { threshold: 0.35 }).observe(v);
-    });
-  })();
+<script>
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } };
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches || nav.connection?.saveData || /(^|-)2g$/.test(nav.connection?.effectiveType ?? "") || !("IntersectionObserver" in window);
+  const videos = [...document.querySelectorAll<HTMLVideoElement>("video[data-clip]")];
+  if (!still && videos.length) {
+    const start = () => {
+      const visible = new WeakSet<HTMLVideoElement>();
+      const near = new IntersectionObserver((entries) => entries.forEach((e) => {
+        const v = e.target as HTMLVideoElement;
+        if (!e.isIntersecting) return;
+        near.unobserve(v);
+        v.src = v.dataset.src!;
+        if (visible.has(v)) v.play().catch(() => {});
+      }), { rootMargin: "200px" });
+      const watch = new IntersectionObserver((entries) => entries.forEach((e) => {
+        const v = e.target as HTMLVideoElement;
+        if (e.intersectionRatio >= 0.33) { visible.add(v); if (v.src) v.play().catch(() => {}); } else { visible.delete(v); v.pause(); }
+      }), { threshold: [0, 0.33, 1] });
+      videos.forEach((v) => {
+        v.addEventListener("playing", () => v.classList.add("on"), { once: true });
+        near.observe(v);
+        watch.observe(v);
+      });
+    };
+    const idle = () => ("requestIdleCallback" in window ? window.requestIdleCallback(start) : setTimeout(start, 200));
+    if (document.readyState === "complete") idle(); else addEventListener("load", idle, { once: true });
+  }
 </script>
 <style>
   .clip { margin: 0; }
-  video { display: block; width: 100%; height: auto; background: #FFFFFF; }
+  .frame { background: var(--panel); }
+  .frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #FFFFFF; opacity: 0; transition: opacity 200ms ease-out; pointer-events: none; }
+  video.on { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { video { transition: none; } }
 </style>

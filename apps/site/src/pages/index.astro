@@ -2,7 +2,9 @@
 import Base from "../layouts/Base.astro";
 import Code from "../components/Code.astro";
 import Shot from "../components/Shot.astro";
+import Clip from "../components/Clip.astro";
 import Faq from "../components/Faq.astro";
+import TourPlayer from "../components/TourPlayer.astro";
 import CtaBand from "../components/CtaBand.astro";
 import { SDKS } from "../lib/sdks";
 import { softwareApplication } from "../lib/jsonld";
@@ -12,7 +14,6 @@ import { SITE } from "../site";
 import { playerUrl, VIDEOS } from "../lib/videos.mjs";
 import overviewLight from "../assets/screens/overview-light.png";
 import overviewDark from "../assets/screens/overview-dark.png";
-import customer from "../assets/screens/customer-light.png";
 import offerings from "../assets/screens/offerings-light.png";
 import { INTEGRATIONS, integrationPath, CHART_PAGES } from "../data";
 import { logo } from "../lib/logos";
@@ -60,7 +61,7 @@ const features = [
         <a class="btn" href={SITE.signup}>Start free on Cloud</a>
         <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
       </div>
-      <p class="small muted rise d3 alt">Already have an account? <a href={SITE.login}>Sign in</a> · Prefer your own servers? <a href="/self-host">Self-host free</a></p>
+      <p class="small muted rise d3 alt">Already have an account? <a href={SITE.login}>Sign in</a> · Prefer your own servers? <a href="/self-host">Self-host free</a> · <a href="#demo">Watch the 2½-minute demo</a></p>
       <p class="small rise d3 new"><a href="/add-in-app-purchases"><strong>New to in-app purchases?</strong> Add subscriptions to your app for free <span class="arrow">→</span></a></p>
       <div class="hero-code rise d3">
         <Code title="The one line" label="Swift · AppDelegate" code={`Purchases.proxyURL = URL(string: "https://api.revenuedot.app")!  // or your own server
@@ -80,6 +81,21 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
         <div class="cell"><p class="label">Free on Cloud</p><p class="stat">$10K</p><p>a month in tracked revenue, then capped at {usd(CLOUD_CAP)} a month. Self-hosting costs only your servers.</p></div>
         <div class="cell"><p class="label">Lines of app code to change</p><p class="stat">1</p><p>The SDK's proxy URL. Purchases, offerings and entitlements stay as they are.</p></div>
       </div></div>
+    </div>
+  </section>
+
+  <section class="section" id="demo" data-fast-scroll="viewed_platform_demo">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">See the whole platform in 2½ minutes</p>
+        <h2 class="h2">Switch in one line, then run everything</h2>
+        <p class="lede">Watch an app move from RevenueCat to RevenueDot: change the SDK's URL, import the customers, then open the dashboard for charts, paywalls, experiments, integrations and the AI assistant. It ends with enterprise roles, single sign-on, self-hosting and a bill that stops at {usd(CLOUD_CAP)} a month.</p>
+      </div>
+      <TourPlayer name="revenuedot-platform-demo" seconds={152} location="home" />
+      <div class="btns demo-cta">
+        <a class="btn" href={SITE.signup}>Start free on Cloud</a>
+        <a class="btn secondary" href="/migrate-from-revenuecat">Migrate from RevenueCat <span class="arrow">→</span></a>
+      </div>
     </div>
   </section>
 
@@ -180,7 +196,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
       </div>
       <div class="pair">
         <div class="pair-item">
-          <Shot light={customer} alt="A customer page in RevenueDot: total spent, active Pro entitlement, App Store subscription, customer details and history" sizes="(max-width: 900px) 100vw, 600px" />
+          <Clip name="revenuedot-loop-customers-v1" alt="The Customers list in RevenueDot with its filters, then one customer's page: the app user ID, the active entitlement and App Store subscription, details and history" sizes="(max-width: 900px) 100vw, 600px" />
           <p class="small"><strong>Customers.</strong> <span class="muted">Every purchase, entitlement, alias and event for one app user, with grants and refunds a click away.</span></p>
         </div>
         <div class="pair-item">
@@ -244,6 +260,7 @@ Purchases.configure(withAPIKey: "appl_...")                       // unchanged`}
   .hero-shot { margin-top: 56px; margin-bottom: 96px; }
   .sdk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
   .more { margin-top: 20px; }
+  .demo-cta { margin-top: 28px; }
   .lede a { color: var(--fg); }
   .card { text-decoration: none; transition: background var(--fast) var(--ease); }
   .card:hover { background: var(--hover); }

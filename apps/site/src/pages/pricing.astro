@@ -7,6 +7,8 @@ import { PLANS, CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE, RC_FREE_UP_TO, RC_RATE,
 import { softwareApplication } from "../lib/jsonld";
 import { FAQ_COST, FAQ_PRICE_ALT, FAQ_SELF_HOST, FAQ_ALTERNATIVE, FAQ_DATA, FAQ_LICENSE } from "../lib/faq";
 import Visual from "../components/Visual.astro";
+import Clip from "../components/Clip.astro";
+import TourPlayer from "../components/TourPlayer.astro";
 import Evidence from "../components/Evidence.astro";
 import { SITE } from "../site";
 
@@ -84,6 +86,17 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
     </div>
   </section>
 
+  <section class="section" id="film">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">The price in 43 seconds</p>
+        <h2 class="h2">Your bill stops at {usd(CLOUD_CAP)} a month</h2>
+        <p class="lede">Watch an app switch from RevenueCat in one line, see the dashboard it runs from, and read the price curve from free to {usd(CLOUD_CAP)} a month.</p>
+      </div>
+      <div class="film"><TourPlayer name="revenuedot-platform-teaser" seconds={43} label="Watch the teaser" location="pricing" /></div>
+    </div>
+  </section>
+
   <section class="section" id="compare-plans" data-fast-scroll="viewed_pricing_compare">
     <div class="wrap">
       <div class="head">
@@ -104,6 +117,21 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="team-controls">
+    <div class="wrap">
+      <div class="head">
+        <p class="label">Team controls</p>
+        <h2 class="h2">Roles, single sign-on and audit logs on screen</h2>
+        <p class="lede">These are the team controls from the plan table, recorded in the dashboard with example data. The plan table says which plan includes each one.</p>
+      </div>
+      <div class="controls">
+        <Clip name="revenuedot-loop-roles-v1" sizes="(max-width: 900px) 100vw, 380px" alt="The organization's Roles page: opening New custom role, typing a name and ticking the scopes it allows" caption="Custom roles: pick exactly which scopes a role has." />
+        <Clip name="revenuedot-loop-sso-v1" sizes="(max-width: 900px) 100vw, 380px" alt="Organization settings, Single sign-on: an OpenID Connect connection and its verified domain, then turning on Require single sign-on and confirming it" caption="Single sign-on: connect your identity provider and require it for your domain." />
+        <Clip name="revenuedot-loop-audit-v1" sizes="(max-width: 900px) 100vw, 380px" alt="The Audit log listing who changed what and when, then the Compliance exports page with a signed audit log export" caption="The audit log, and signed compliance exports for Enterprise." />
       </div>
     </div>
   </section>
@@ -184,6 +212,9 @@ const cellClass = (c: string) => (c === "Yes" ? "yes" : c === "No" ? "no" : unde
   .plan li::before { content: ""; position: absolute; left: 0; top: .65em; width: 6px; height: 6px; background: var(--fg); }
   .plan .btn { justify-content: center; margin-top: auto; }
   .note { margin-top: 20px; max-width: 820px; }
+  .film { max-width: 1040px; }
+  .controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+  @media (max-width: 900px) { .controls { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
   .billing-shot { margin-top: 48px; display: grid; gap: 8px; }
   .billing-shot .small { margin-bottom: 8px; }
   .rc-ev { margin-top: 32px; display: grid; gap: 16px; }

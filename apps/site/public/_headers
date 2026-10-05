@@ -9,6 +9,10 @@
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
 
+# Versioned silent loops (the file name changes with every new cut).
+/clips/revenuedot-loop-*
+  Cache-Control: public, max-age=31536000, immutable
+
 /llms.txt
   Content-Type: text/plain; charset=utf-8
   Access-Control-Allow-Origin: *

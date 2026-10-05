@@ -3,7 +3,8 @@
 // Onboarding emails link here until the video is on YouTube.
 import Base from "../../layouts/Base.astro";
 import CtaBand from "../../components/CtaBand.astro";
-import { playerUrl, VIDEOS, WATCH } from "../../lib/videos.mjs";
+import TourPlayer from "../../components/TourPlayer.astro";
+import { CHAPTERS, playerUrl, VIDEOS, WATCH } from "../../lib/videos.mjs";
 
 export function getStaticPaths() {
   return Object.keys(WATCH).filter((name) => VIDEOS[name]).map((name) => ({ params: { name } }));
@@ -15,9 +16,11 @@ const path = `/watch/${name}`;
 const poster = `https://revenuedot.app/videos/${name}.webp`;
 const iso = `PT${Math.floor(w.seconds / 60)}M${w.seconds % 60}S`;
 const length = `${Math.floor(w.seconds / 60)}:${String(w.seconds % 60).padStart(2, "0")}`;
+const chapters = CHAPTERS[name];
 const jsonld = [{
   "@context": "https://schema.org", "@type": "VideoObject", name: w.heading, description: w.summary, thumbnailUrl: poster, uploadDate: w.date, duration: iso,
   contentUrl: `https://revenuedot.app/videos/${name}.mp4`, embedUrl: playerUrl(name), publisher: { "@type": "Organization", name: "RevenueDot", url: "https://revenuedot.app" },
+  ...(chapters && { hasPart: chapters.map((c, i) => ({ "@type": "Clip", name: c.title, startOffset: Math.floor(c.start), endOffset: Math.floor(chapters[i + 1]?.start ?? w.seconds) })) }),
 }];
 ---
 <Base title={w.heading} description={w.description} path={path} image={poster} imageAlt={v.title} jsonld={jsonld}
@@ -26,9 +29,13 @@ const jsonld = [{
     <div class="wrap">
       <p class="label">Video · {length}</p>
       <h1 class="h2 title">{w.heading}</h1>
-      <div class="shot stream player">
-        <iframe src={playerUrl(name)} title={v.title} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
-      </div>
+      {chapters ? (
+        <div class="player"><TourPlayer name={name} seconds={w.seconds} location="watch" eager /></div>
+      ) : (
+        <div class="shot stream player">
+          <iframe src={playerUrl(name)} title={v.title} allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+        </div>
+      )}
       <div class="below">
         <p class="lede">{w.summary}</p>
         <div class="links">
@@ -44,6 +51,7 @@ const jsonld = [{
   .watch { padding: 56px 0 80px; }
   .title { margin: 12px 0 28px; max-width: 900px; text-wrap: balance; }
   .player { max-width: 1040px; }
+  .player > :global(.tour) { max-width: 1040px; }
   .below { display: grid; gap: 24px; margin-top: 28px; max-width: 760px; }
   .links { display: flex; flex-wrap: wrap; gap: 12px; }
   @media (max-width: 720px) { .watch { padding: 32px 0 56px; } }
