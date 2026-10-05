@@ -142,6 +142,13 @@ describe("picking the step", () => {
     expect(pickStep(f, WED, cfg)).toBeNull();
   });
 
+  it("checks in when sandbox purchases work but no real sale came two weeks after the go-live checklist", () => {
+    const f = { createdAt: WED - 25 * D, firstAppAt: WED - 24 * D, testPurchaseAt: WED - 23 * D, sdkFirstAt: WED - 22 * D, storeConnected: true,
+      sent: sent(["welcome", WED - 25 * D], ["go_live", WED - 15 * D]) };
+    expect(pickStep(facts(f), WED, cfg)).toBe("sandbox_only");
+    expect(pickStep(facts({ ...f, sent: sent(["welcome", WED - 25 * D], ["go_live", WED - 10 * D]) }), WED, cfg)).toBeNull();
+  });
+
   it("asks why when Standard is cancelled", () => {
     expect(pickStep(facts({ createdAt: WED - 60 * D, canceledAt: WED - D }), WED, cfg)).toBe("standard_canceled");
   });

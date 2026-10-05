@@ -553,8 +553,12 @@ export function accountRoutes(deps: Deps) {
     const f = FEEDBACK[kind];
     const u = await journeyTokenUser(db, c.req.param("token"));
     if (!u || !f || !f.ok(value)) return c.html(JOURNEY_NOT_FOUND(), 404);
+    // The comment box asks what fits the answer: a quote from a fan, the first fix from a detractor.
+    const n = kind === "nps" ? Number(value) : NaN;
+    const ask = n >= 9 ? "Thank you. Could we quote you on our site? Write a sentence or two, and we'll ask before we use it."
+      : n <= 6 ? "Thank you for being honest. What should we fix first?" : "Anything you'd like to add? (optional)";
     return c.html(page(f.title, f.show(value), `<form method="post"><input type="hidden" name="kind" value="${kind}"><input type="hidden" name="value" value="${value.replace(/[&<>"']/g, "")}">` +
-      `<p><textarea name="comment" rows="4" maxlength="2000" placeholder="Anything you'd like to add? (optional)" style="width:100%;font:inherit;padding:10px;border:1px solid #E5E5E5;box-sizing:border-box"></textarea></p><button type="submit">Send</button></form>`));
+      `<p><textarea name="comment" rows="4" maxlength="2000" placeholder="${ask.replace(/"/g, "&quot;")}" style="width:100%;font:inherit;padding:10px;border:1px solid #E5E5E5;box-sizing:border-box"></textarea></p><button type="submit">Send</button></form>`));
   });
   r.post("/auth/journeys/feedback/:token", async (c) => {
     const body = await c.req.parseBody().catch(() => ({} as Record<string, unknown>));

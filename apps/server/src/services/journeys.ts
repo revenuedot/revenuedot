@@ -107,6 +107,8 @@ export const STEPS: Step[] = [
   { id: "checkin", onboarding: true, freshFor: 4 * D, due: (f) => (!migrating(f) && !f.firstAppAt && !f.liveAt ? f.createdAt + 3 * D : null) },
   { id: "ai_setup", onboarding: true, freshFor: 5 * D, due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt ? f.createdAt + 6 * D : null) },
   // Migrators without an import already had the offer in import_help.
+  // Live in the sandbox but no real sale two weeks after the go-live checklist: usually a release waiting for review.
+  { id: "sandbox_only", onboarding: true, freshFor: 7 * D, due: (f) => (f.storeConnected && f.testPurchaseAt && !f.liveAt && f.sent.has("go_live") ? f.sent.get("go_live")! + 14 * D : null) },
   { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt && !(migrating(f) && !f.rcImportAt) ? f.createdAt + 10 * D : null) },
   { id: "last_call", onboarding: true, freshFor: 9 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt ? f.createdAt + 21 * D : null) },
   // Adoption, once live. Migrators start once the cutover email has gone out.

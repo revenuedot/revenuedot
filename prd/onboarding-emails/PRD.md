@@ -83,6 +83,7 @@ Considered: one Workflow instance per account (`step.sleep`, `step.waitForEvent`
 | `first_purchase` | day 1 | not migrating, no test purchase, no SDK | first test purchase | First purchase in 5 minutes |
 | `checkin` | day 3 | not migrating, no app | reply: what are you building? | none |
 | `ai_setup` | day 6 | not migrating, SDK not connected | one prompt in Claude Code, Cursor or Codex | none |
+| `sandbox_only` | 14 days after `go_live` | store connected, sandbox purchases, no real sale | reply; check the release uses store keys and approved products | none |
 | `need_hand` | day 10 | SDK not connected; migrators only after an import (import_help made the offer before) | book 15 minutes (migrators: set up forwarding together) | none |
 | `last_call` | day 21 | SDK not connected | reply; onboarding then stops for good | none |
 

@@ -57,7 +57,7 @@ export type StepId =
   | "first_sale" | "standard_welcome" | "standard_canceled"
   | "paywalls" | "experiments" | "recovery" | "team" | "how_going" | "assistant"
   | "pricing_explainer" | "upgrade_nudge" | "upgrade_personal" | "enterprise"
-  | "referral" | "went_quiet" | "teammate_welcome";
+  | "referral" | "went_quiet" | "teammate_welcome" | "sandbox_only";
 
 /** What a step's copy may use. Everything optional is filled only for the steps that need it. */
 export interface JourneyCtx {
@@ -189,7 +189,6 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       ] },
       { t: "picture", video: "first-purchase", caption: "The whole first purchase, from an empty project to an active subscriber." },
       { t: "callout", text: "**Cloud is free until your apps make $10,000 a month.** That includes paywalls, experiments, more than 40 charts, webhooks and integrations, for unlimited apps and teammates. No card needed." },
-      { t: "button", label: "Open your dashboard", url: dash(c, "/overview") },
     ],
   }),
 
@@ -249,17 +248,12 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     heading: c.testPurchase ? "Your test purchase worked" : "Connect your app",
     blocks: [
       { t: "progress", current: "app" },
-      { t: "lead", text: `${c.testPurchase ? "That purchase went through the same pipeline a real App Store sale does. " : ""}Next, connect your real app. RevenueDot speaks the RevenueCat SDK's protocol, so you use the official SDK and change two settings. You don't need a RevenueCat account.` },
+      { t: "lead", text: `${c.testPurchase ? "That purchase ran through the same steps a real App Store sale does. " : ""}Next, connect your real app: you use the official RevenueCat SDK and change two settings, the server address and, on iOS and Android, the signature check. You don't need a RevenueCat account.` },
       { t: "picture", video: "connect-your-app" },
-      { t: "h2", text: "The two settings" },
-      { t: "defs", items: [
-        { term: "The server address", text: "Point the SDK at `https://api.revenuedot.app`, before you call `configure`." },
-        { term: "The signature check", text: "Turn it off on iOS and Android. The stock SDK checks for RevenueCat's signature, which RevenueDot's answers don't carry. React Native and Flutter already default to off." },
-      ] },
       { t: "h2", text: "Copy the code for your platform" },
       { t: "code", label: "iOS · Swift", text: 'Purchases.proxyURL = URL(\n  string: "https://api.revenuedot.app")!\nPurchases.configure(with:\n  .init(withAPIKey: "test_...")\n  .with(entitlementVerificationMode:\n    .disabled)\n  .build())' },
-      { t: "code", label: "Android · Kotlin", text: 'Purchases.proxyURL =\n  URL("https://api.revenuedot.app")\nPurchases.configure(\n  PurchasesConfiguration\n    .Builder(context, "test_...")\n    .entitlementVerificationMode(\n      EntitlementVerificationMode.DISABLED)\n    .build())' },
-      { t: "code", label: "React Native · Expo", text: 'await Purchases.setProxyURL(\n  "https://api.revenuedot.app");\nPurchases.configure({ apiKey: "test_..." });' },
+      { t: "code", label: "Android · Kotlin", text: 'import com.revenuecat.purchases\n  .EntitlementVerificationMode.DISABLED\n\nPurchases.proxyURL =\n  URL("https://api.revenuedot.app")\nPurchases.configure(\n  PurchasesConfiguration\n    .Builder(context, "test_...")\n    .entitlementVerificationMode(\n      DISABLED)\n    .build())' },
+      { t: "code", label: "React Native · Expo", text: 'await Purchases.setProxyURL(\n  "https://api.revenuedot.app");\nPurchases.configure({\n  apiKey: "test_...",\n});' },
       { t: "code", label: "Flutter", text: "await Purchases.setProxyURL(\n  'https://api.revenuedot.app');\nawait Purchases.configure(\n  PurchasesConfiguration('test_...'));" },
       { t: "h2", text: "How you'll know it worked" },
       { t: "p", text: "Open the app once. Within a minute the customer appears in **Customers**, and the SDK version shows on the app's page under **Apps**." },
@@ -328,7 +322,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
         { title: "Product IDs match the store exactly", text: "Google Play subscriptions are written as `subscriptionId:basePlanId`." },
       ] },
       { t: "picture", shot: "apps", href: dash(c, "/apps"), caption: "Apps shows each store's status at a glance." },
-      { t: "callout", text: "**Try the whole flow in the sandbox first.** A sandbox purchase from a TestFlight or internal-testing build shows up in **Customers** with a Sandbox tag." },
+      { t: "callout", text: "**Try the whole flow in the sandbox first.** A sandbox purchase from a TestFlight or internal-testing build shows up in **Customers**, in the **Sandbox** list." },
       { t: "button", label: "Check your apps", url: dash(c, "/apps"), secondary: { label: "The full checklist", url: `${docs("guides/going-to-production")}#stores` } },
     ],
   }),
@@ -359,7 +353,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
 
   switch_plan: (c) => ({
     look: "rich",
-    subject: "How to switch from RevenueCat without losing a renewal",
+    subject: "How to switch from RevenueCat safely, step by step",
     preheader: "Import, run both side by side, then switch. Your app keeps its SDK the whole time.",
     eyebrow: "Switching from RevenueCat",
     heading: "Your switch, step by step",
@@ -378,7 +372,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { t: "faq", items: [
         { q: "Will our customers notice?", a: "They shouldn't. The app keeps the same SDK and the same products; only the server it talks to changes. Older app versions keep using RevenueCat until you turn it off." },
         { q: "What if the numbers don't match?", a: "Keep RevenueCat on, run `npx revenuedot import verify`, and reply to this email. We'll look at it with you." },
-        { q: "Can we leave later?", a: "Yes. RevenueDot is open source, and your data exports to your own Postgres in one command." },
+        { q: "Can we leave later?", a: "Yes. RevenueDot is open source, and one command, `npx revenuedot move`, copies your whole project to a RevenueDot server you run yourself." },
       ] },
       { t: "button", label: "Start the import", url: docs("migrate/importer"), secondary: { label: "See what you'd save", url: `${SITE}/tools/revenuecat-fee-calculator` } },
     ],
@@ -444,11 +438,11 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       ...(c.bills && c.bills.revenuecat > c.bills.revenuedot ? [{ t: "stat", value: usd((c.bills.revenuecat - c.bills.revenuedot) * 12), label: "a year saved at your last 7 days' pace", tone: "up" } as Block] : []),
       ...(c.bills ? [{ t: "table", head: ["", "A month", "A year"], rows: [["RevenueCat", usd(c.bills.revenuecat), usd(c.bills.revenuecat * 12)], ["RevenueDot Cloud", usd(c.bills.revenuedot), usd(c.bills.revenuedot * 12)]],
         note: `Based on ${usd(c.projected ?? 0)} a month (${usd(c.last7 ?? 0)} in the last 7 days). RevenueCat charges 1% of all revenue once you pass $2,500 a month; RevenueDot 0.5% above $10,000, capped at $999.` } as Block] : []),
-      { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. When these three are true, you're ready to switch:` },
+      { t: "p", text: `${proj(c)} has recorded live sales on RevenueDot for a week. Before you turn RevenueCat off:` },
       { t: "checklist", items: [
         { title: "The numbers match", text: "`npx revenuedot import verify` shows no differences." },
         { title: "Few users run the old version", text: "Older versions still talk to RevenueCat, so wait until most users have updated." },
-        { title: "Webhooks move in the same hour", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." },
+        { title: "Move your webhooks in the same hour", text: "Point your backend's webhooks at RevenueDot in the hour you turn RevenueCat's off." },
       ] },
       { t: "p", text: "Then stop forwarding, and turn RevenueCat off." },
       { t: "button", label: "Open the cutover checklist", url: docs("migrate/cutover-checklist") },
@@ -518,13 +512,13 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
 
   paywalls: (c) => ({
     look: "rich",
-    subject: "Most trials start in the first session. Is your paywall ready?",
+    subject: "89% of trials start on install day. Is your paywall ready?",
     preheader: "Start from a paywall pattern that has worked for other apps, and change it from the dashboard.",
     eyebrow: "Grow your revenue",
-    heading: "Your first session decides most of your trials",
+    heading: "Install day decides most of your trials",
     blocks: [
       { t: "stat", value: "89.4%", label: "of trial starts happen on install day (Adapty, 2026)" },
-      { t: "lead", text: "Most people decide in their first session, on one screen. RevenueDot lets you build that screen from a proven pattern and change it from the dashboard." },
+      { t: "lead", text: "Most people decide on the day they install, usually on one screen. RevenueDot lets you build that screen from a proven pattern and change it from the dashboard." },
       { t: "picture", video: "paywalls-and-experiments" },
       { t: "h2", text: "Four patterns to start from" },
       { t: "defs", items: [
@@ -548,7 +542,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { t: "lead", text: "Your paywall is live, so the next lift usually comes from a test. RevenueDot splits new customers between two versions and shows which one earns more." },
       { t: "cards", items: [
         { title: "Annual first or monthly first", text: "The same plans in another order; the first is the one selected. Judged on how many start a purchase." },
-        { title: "A longer or shorter trial", text: "Each product swapped for one with another trial length. Judged on how many end up paying." },
+        { title: "A longer or shorter trial", text: "Each plan swapped for a store product with another trial length, which you create in App Store Connect or Google Play first. Judged on how many end up paying." },
         { title: "A new paywall design", text: "A copy of your paywall to change freely. Judged on how many start a purchase." },
       ] },
       { t: "p", text: "Results show the lift for each metric with a confidence interval, and the chance each version beats the other. Let a test run until it has enough customers in each version; RevenueDot tells you when." },
@@ -569,8 +563,8 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
       { t: "h2", text: "How it works" },
       { t: "defs", items: [
         { term: "A case opens", text: "The moment a store reports a billing problem: App Store billing retry, Google Play grace period or account hold, or a Stripe past-due." },
-        { term: "Emails go out", text: "Up to three, on days 0, 3 and 7, each with a link to update payment." },
-        { term: "You see what came back", text: "A case counts as recovered when the subscription renews within 30 days, with the revenue it saved." },
+        { term: "Emails go out", text: "Three by default, on days 0, 3 and 7, each with a link to fix the payment. You can change the days and words, and add up to five." },
+        { term: "You see what came back", text: "A case counts as recovered when the subscription renews within the recovery window, 30 days by default, with the revenue it saved." },
       ] },
       { t: "callout", text: "Emails go only to customers with an email address on file, set as the `$email` attribute from your app or backend." },
       { t: "button", label: "Turn on payment recovery", url: dash(c, "/lifecycle/payment-recovery") },
@@ -668,7 +662,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     blocks: [
       { t: "p", text: hi(c) },
       { t: "p", text: `Your apps passed $10,000 in tracked revenue in ${c.overMonth ?? "a recent month"} (${usd(c.overTracked ?? 0)}), and the account is still on Cloud Free. Congratulations on the growth.` },
-      { t: "p", text: `If something is in the way of [upgrading to Standard](${c.app}/account/billing), such as an invoice in another company's name, a purchase order or a security question, reply and tell us. We'll sort it out.` },
+      { t: "p", text: `If something is in the way of [upgrading to Standard](${c.app}/account/billing), such as your company name and tax ID on invoices, a different billing email, or a question about how the bill works, reply and tell us. We'll sort it out.` },
     ],
   }),
 
@@ -706,6 +700,18 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
     ],
   }),
 
+  sandbox_only: (c) => ({
+    look: "note",
+    subject: "Your sandbox purchases work. Is your release live yet?",
+    preheader: "Everything's connected. Here's what usually holds up the first real sale.",
+    blocks: [
+      { t: "p", text: hi(c) },
+      { t: "p", text: `${proj(c)}'s store is connected and its sandbox purchases come through, but no real sale has arrived yet. Usually that just means the release with RevenueDot is still waiting for App Review.` },
+      { t: "p", text: `If it's already live, check two things: the release build uses your store key (\`appl_\` or \`goog_\`), not the \`test_\` one, and your products are approved in the store. You can see what has arrived so far in [Customers](${dash(c, "/customers")}).` },
+      { t: "p", text: "If anything looks off, reply and we'll take a look with you." },
+    ],
+  }),
+
   went_quiet: (c) => ({
     look: "note",
     subject: `Is everything OK with ${proj(c)}?`,
@@ -737,7 +743,7 @@ const EMAILS: Record<StepId, (c: JourneyCtx) => JourneyMail> = {
 };
 
 /** Steps whose footer says they stop once the app is live. */
-const ONBOARDING = new Set<StepId>(["welcome", "verify_reminder", "first_purchase", "checkin", "connect_app", "ai_setup", "store_keys", "go_live", "need_hand", "last_call", "switch_plan", "import_help", "side_by_side", "forwarding_check"]);
+const ONBOARDING = new Set<StepId>(["sandbox_only", "welcome", "verify_reminder", "first_purchase", "checkin", "connect_app", "ai_setup", "store_keys", "go_live", "need_hand", "last_call", "switch_plan", "import_help", "side_by_side", "forwarding_check"]);
 
 // ---------- layout ----------
 
@@ -823,7 +829,7 @@ function render(c: JourneyCtx, m: JourneyMail): Rendered {
       case "copy": return row(label(b.label) + box(esc(b.text), `border:2px solid ${INK};padding:14px 16px;font-family:${MONO};font-size:15px;line-height:20px;font-weight:600;color:${INK};word-break:break-all;`));
       case "rating": return row(`<p style="margin:0 0 12px;font-size:16px;line-height:24px;font-weight:700;color:${INK};">${esc(b.question)}</p>` +
         // Inline boxes wrap onto a second line on a narrow phone instead of widening the email.
-        `<p style="margin:0;font-size:0;line-height:0;">` + Array.from({ length: 11 }, (_, n) => `<a href="${esc(tag(b.url(n), s))}" style="display:inline-block;width:36px;height:36px;margin:0 4px 4px 0;border:1px solid ${INK};font-family:${MONO};font-size:14px;line-height:36px;text-align:center;color:${INK};text-decoration:none;">${n}</a>`).join("") + `</p>` +
+        `<p style="margin:0;font-size:0;line-height:0;">` + Array.from({ length: 11 }, (_, n) => `<a href="${esc(tag(b.url(n), s))}" style="display:inline-block;width:25px;height:34px;margin:0 2px 4px 0;border:1px solid ${INK};font-family:${MONO};font-size:13px;line-height:34px;text-align:center;color:${INK};text-decoration:none;">${n}</a>`).join("") + `</p>` +
         `<p style="margin:4px 0 0;font-size:12px;line-height:18px;color:${FG3};">0 = ${esc(b.low)} &middot; 10 = ${esc(b.high)}</p>`);
       case "choices": return row(b.items.map((x) => `<p style="margin:0 0 8px;"><a href="${esc(tag(x.url, s))}" style="display:inline-block;border:1px solid ${INK};padding:10px 16px;font-size:14px;line-height:20px;font-weight:600;color:${INK};text-decoration:none;">${esc(x.label)}</a></p>`).join(""), 14);
       case "button": return row(`<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${INK};"><a href="${esc(tag(b.url, s))}" style="display:inline-block;padding:15px 26px;font-family:${FONT};font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#FFFFFF;text-decoration:none;">${esc(b.label)} &rarr;</a></td></tr></table>` +
