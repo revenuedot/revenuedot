@@ -532,14 +532,22 @@ export function accountRoutes(deps: Deps) {
     await db.update(schema.users).set({ productEmails: false }).where(eq(schema.users.id, u.userId));
     return c.html(page("You are unsubscribed", `${u.email} gets no more setup help, tips or product news. Turn them back on in Account settings → Notifications.`));
   });
-  // The welcome email's two paths: records which one the reader picked, then opens its guide. A wrong or missing path still
-  // opens a guide, so a mail scanner that follows the link changes nothing that matters.
+  // The welcome email's "Switching from RevenueCat?" link. GET shows a confirm button, so a mail scanner that opens the link
+  // changes nothing; POST records the switching path (switchers get the switching emails instead of the new-app ones) and opens
+  // the guide. Any other path, from older emails, just opens the quickstart.
+  const utm = (path: string) => `utm_source=revenuedot&utm_medium=email&utm_campaign=journeys&utm_content=welcome_${path}`;
   r.get("/auth/journeys/path/:token", async (c) => {
-    const path = c.req.query("path") === "revenuecat" ? "revenuecat" : "new";
+    if (c.req.query("path") !== "revenuecat") return c.redirect(`https://revenuedot.app/docs/getting-started/quickstart?${utm("new")}`, 302);
     const u = await journeyTokenUser(db, c.req.param("token"));
-    if (u) await db.update(schema.users).set({ journeyPath: path }).where(eq(schema.users.id, u.userId));
-    const guide = path === "revenuecat" ? "https://revenuedot.app/docs/migrate" : "https://revenuedot.app/docs/getting-started/quickstart";
-    return c.redirect(`${guide}?utm_source=revenuedot&utm_medium=email&utm_campaign=journeys&utm_content=welcome_${path}`, 302);
+    if (!u) return c.html(JOURNEY_NOT_FOUND(), 404);
+    return c.html(page("Switching from RevenueCat?", `We'll send ${u.email} the switching steps instead of the new-app ones: import, a side-by-side run, then turning RevenueCat off.`,
+      `<form method="post"><input type="hidden" name="path" value="revenuecat"><button type="submit">Yes, show me how to switch</button></form>`));
+  });
+  r.post("/auth/journeys/path/:token", async (c) => {
+    const u = await journeyTokenUser(db, c.req.param("token"));
+    if (!u) return c.html(JOURNEY_NOT_FOUND(), 404);
+    await db.update(schema.users).set({ journeyPath: "revenuecat" }).where(eq(schema.users.id, u.userId));
+    return c.redirect(`https://revenuedot.app/docs/migrate?${utm("revenuecat")}`, 302);
   });
 
   // One-click answers (a 0 to 10 rating, a reason for leaving Standard). GET shows the answer with a confirm button and a

@@ -40,14 +40,17 @@ export interface Facts {
   firstAppAt: number | null; testPurchaseAt: number | null;
   sdkFirstAt: number | null; sdkLastAt: number | null; sdk: { platform: string; version: string } | null;
   storeConnected: boolean; liveAt: number | null; lastSaleAt: number | null;
-  firstSale: { product: string; amount: number | null; currency: string | null; country: string | null } | null;
+  /** The first live sale; `existing` means the app already had subscribers before RevenueDot saw it. */
+  firstSale: { product: string; amount: number | null; currency: string | null; country: string | null; existing?: boolean } | null;
   rcImportAt: number | null; importedCustomers: number;
   paywallPublishedAt: number | null; experimentStartedAt: number | null;
   teammates: number; recoveryOn: boolean; assistantConnected: boolean;
   plan: string; planSince: number | null; canceledAt: number | null; tracked: number; free100At: number | null;
   /** The tracked revenue of the month the free_100 email was about. */
   overTracked: number;
-  alertAt: number | null; lastNotificationAt: number | null; referralJoinedAt: number | null;
+  alertAt: number | null; lastNotificationAt: number | null;
+  /** Switchers waiting for the cutover email: customers whose app called RevenueDot (up to 25) and all customers (up to 250); else 0. */
+  sdkCustomers: number; customers: number; referralJoinedAt: number | null;
   sent: Map<StepId, number>;
 }
 
@@ -69,25 +72,40 @@ interface Step {
 
 const after = (t: number | null, ms: number) => (t === null ? null : t + ms);
 const notYet = (f: Facts, ...steps: StepId[]) => steps.every((s) => !f.sent.has(s));
+/** Customers seen through the SDK that show the app update reached real users. */
+const updateShipped = (f: Facts) => Math.max(3, Math.min(25, Math.ceil(f.customers * 0.1)));
 const migrating = (f: Facts) => f.path === "revenuecat" || f.rcImportAt !== null;
 /** The plan, in priority order: when two steps are due, the first one wins and the other waits. */
 export const STEPS: Step[] = [
   { id: "welcome", onboarding: true, anyHour: true, uncapped: true, freshFor: 2 * D, due: (f) => (f.ownsProjects ? f.createdAt + 5 * 60_000 : null) },
   { id: "teammate_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (!f.ownsProjects && f.memberOf ? f.createdAt + 10 * 60_000 : null) },
   { id: "verify_reminder", onboarding: true, anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.ownsProjects && !f.verified ? f.createdAt + D : null) },
-  // Celebrations and replies to what just happened.
-  { id: "first_sale", anyDay: true, freshFor: 3 * D, due: (f) => f.liveAt },
-  { id: "standard_welcome", anyDay: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
-  // Switching from RevenueCat: the cutover is the most valuable email of all, so it outranks the rest.
-  { id: "cutover", freshFor: 14 * D, due: (f, now) => (migrating(f) && f.liveAt && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
-  { id: "upgrade_nudge", freshFor: 10 * D, due: (f) => (f.plan === "free" && f.free100At !== null ? f.free100At + 3 * D : null) },
+  // Celebrations and receipts answer something that just happened, so they skip the caps.
+  { id: "first_sale", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => f.liveAt },
+  { id: "standard_welcome", anyDay: true, uncapped: true, freshFor: 3 * D, due: (f) => (f.plan === "standard" ? f.planSince : null) },
+  // Switching from RevenueCat: the cutover, after a week of live sales and once the app update reaches real customers
+  // (a tenth of them through the SDK, at least 3 and at most 25; a test build brings one or two). The rollout can take weeks,
+  // so it stays fresh for 60 days.
+  { id: "cutover", freshFor: 60 * D, due: (f, now) => (migrating(f) && f.liveAt && f.sdkCustomers >= updateShipped(f) && f.lastSaleAt && now - f.lastSaleAt < 3 * D ? f.liveAt + 7 * D : null) },
   { id: "side_by_side", onboarding: true, freshFor: 7 * D, due: (f) => (f.rcImportAt && !f.liveAt ? f.rcImportAt + D : null) },
-  // Onboarding, by the next missing step.
+  // Building an app (or already selling with your own code): the next missing step.
   { id: "store_keys", onboarding: true, freshFor: 10 * D, due: (f) => (f.sdkFirstAt && !f.storeConnected && !f.liveAt ? f.sdkFirstAt + D : null) },
   { id: "connect_app", onboarding: true, freshFor: 10 * D,
-    due: (f) => (!migrating(f) && !f.sdkFirstAt && !f.liveAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
-  // One offer of a call to anyone stuck for ten days (migrators who have not imported yet get no offer).
-  { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => (!f.sdkFirstAt && !f.liveAt && !(migrating(f) && !f.rcImportAt) ? f.createdAt + 10 * D : null) },
+    due: (f) => (!migrating(f) && !f.sdkFirstAt && (f.testPurchaseAt || f.firstAppAt) ? (f.testPurchaseAt ? f.testPurchaseAt + 20 * H : f.createdAt + 3 * D) : null) },
+  { id: "paywall", onboarding: true, freshFor: 10 * D,
+    due: (f) => (!migrating(f) && f.sdkFirstAt && f.storeConnected && !f.paywallPublishedAt && !f.liveAt ? Math.max(f.sdkFirstAt + 3 * D, f.createdAt + 3 * D, (f.sent.get("store_keys") ?? 0) + 2 * D) : null) },
+  // One email to anyone stuck, at the first step where they stall: no SDK call (day 5), no store five days after the store
+  // email; for switchers, no import (day 3), or no store notifications five days after the side-by-side email.
+  { id: "need_hand", onboarding: true, freshFor: 6 * D, due: (f) => {
+    if (f.liveAt) return null;
+    if (migrating(f)) {
+      if (!f.rcImportAt) return f.createdAt + 3 * D;
+      const forwarding = f.lastNotificationAt !== null && f.lastNotificationAt >= f.rcImportAt;
+      return forwarding ? null : (f.sent.get("side_by_side") ?? f.rcImportAt + D) + 5 * D;
+    }
+    if (!f.sdkFirstAt) return f.createdAt + 5 * D;
+    return f.storeConnected ? null : (f.sent.get("store_keys") ?? f.sdkFirstAt + D) + 5 * D;
+  } },
 ];
 
 /** Hour (0–23) and weekday (0 = Sunday) in a time zone; an unknown zone falls back to the default. */
@@ -155,7 +173,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       (SELECT t.created_at FROM transactions t WHERE t.project_id = o.id AND t.source IS NULL AND NOT t.is_sandbox AND t.revenue_usd > 0 AND t.kind IN ('purchase','renewal','one_time')
           AND t.created_at - t.purchased_at < interval '2 days' ORDER BY t.created_at DESC LIMIT 1) AS last_at
       FROM owned o),
-    firsts AS (SELECT pm.uid, t.created_at, t.product_identifier, t.price_amount, t.price_currency, t.country_code FROM pm JOIN transactions t ON t.id = pm.first_tx)
+    firsts AS (SELECT pm.uid, t.project_id, t.customer_id, t.created_at, t.kind, t.product_identifier, t.price_amount, t.price_currency, t.country_code FROM pm JOIN transactions t ON t.id = pm.first_tx)
     SELECT u.id, u.email, u.name, u.created_at, u.email_verified_at, u.time_zone, u.journey_path, u.referral_code, u.product_emails,
       (SELECT count(*) FROM owned o WHERE o.uid = u.id) AS owned,
       -- The project to link to: the oldest one whose app has talked to RevenueDot, else the oldest.
@@ -174,9 +192,21 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       -- Live: a paid production sale recorded within 2 days of the purchase (imported history is recorded much later).
       (SELECT min(f.created_at) FROM firsts f WHERE f.uid = u.id) AS live_at,
       (SELECT max(pm.last_at) FROM pm WHERE pm.uid = u.id) AS last_sale_at,
-      (SELECT json_build_object('product', f.product_identifier, 'amount', f.price_amount, 'currency', f.price_currency, 'country', f.country_code)
+      (SELECT json_build_object('product', f.product_identifier, 'amount', f.price_amount, 'currency', f.price_currency, 'country', f.country_code,
+          -- A renewal of a customer RevenueDot never saw before: the app already sold before it came to RevenueDot. A trial that
+          -- converts is a renewal too, but its trial start is an earlier row for the same customer.
+          'existing', f.kind = 'renewal' AND NOT EXISTS (SELECT 1 FROM transactions t2 WHERE t2.project_id = f.project_id AND t2.customer_id = f.customer_id AND t2.created_at < f.created_at))
           FROM firsts f WHERE f.uid = u.id ORDER BY f.created_at ASC LIMIT 1) AS first_sale,
       (SELECT min(o.rc_import_at) FROM owned o WHERE o.uid = u.id) AS rc_import_at,
+      -- Only for switchers who have not had the cutover email: 25 customers seen through the SDK means the app update shipped.
+      CASE WHEN (u.journey_path = 'revenuecat' OR EXISTS (SELECT 1 FROM owned o WHERE o.uid = u.id AND o.rc_import_at IS NOT NULL))
+          AND NOT EXISTS (SELECT 1 FROM journey_sends js WHERE js.user_id = u.id AND js.step = 'cutover')
+        THEN (SELECT count(*) FROM (SELECT 1 FROM customers c JOIN owned o ON o.id = c.project_id WHERE o.uid = u.id AND c.last_seen_sdk_version IS NOT NULL LIMIT 25) x)
+        ELSE 0 END AS sdk_customers,
+      CASE WHEN (u.journey_path = 'revenuecat' OR EXISTS (SELECT 1 FROM owned o WHERE o.uid = u.id AND o.rc_import_at IS NOT NULL))
+          AND NOT EXISTS (SELECT 1 FROM journey_sends js WHERE js.user_id = u.id AND js.step = 'cutover')
+        THEN (SELECT count(*) FROM (SELECT 1 FROM customers c JOIN owned o ON o.id = c.project_id WHERE o.uid = u.id LIMIT 250) x)
+        ELSE 0 END AS customers,
       (SELECT min(pw.published_at) FROM paywalls pw JOIN owned o ON o.id = pw.project_id WHERE o.uid = u.id) AS paywall_published_at,
       (SELECT min(e.started_at) FROM experiments e JOIN owned o ON o.id = e.project_id WHERE o.uid = u.id) AS experiment_started_at,
       (SELECT count(*) FROM memberships m JOIN owned o ON o.id = m.project_id WHERE o.uid = u.id AND m.user_id <> u.id)
@@ -202,7 +232,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
   return rows.map((r): Facts => {
     const json = <T>(v: unknown): T | null => (v === null || v === undefined ? null : (typeof v === "string" ? JSON.parse(v) : v) as T);
     const sdk = json<{ platform: string; os: string; version: string }>(r.sdk);
-    const sale = json<{ product: string; amount: number | null; currency: string | null; country: string | null }>(r.first_sale);
+    const sale = json<{ product: string; amount: number | null; currency: string | null; country: string | null; existing?: boolean }>(r.first_sale);
     const member = json<{ project_id: string; project_name: string; inviter: string | null }>(r.member_of);
     const sent = new Map<StepId, number>(Object.entries(json<Record<string, string>>(r.sent) ?? {}).map(([k, v]) => [k as StepId, new Date(v).getTime()]));
     const paying = r.ba_plan === "standard" && ["active", "past_due"].includes(String(r.ba_status));
@@ -215,7 +245,9 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       memberOf: member ? { projectId: member.project_id, projectName: member.project_name, inviter: member.inviter } : null,
       firstAppAt: ts(r.first_app_at), testPurchaseAt: ts(r.test_purchase_at), sdkFirstAt: ts(r.sdk_first_at), sdkLastAt: ts(r.sdk_last_at),
       sdk: sdk ? { platform: sdkLabel(sdk.platform, sdk.os), version: sdk.version } : null,
-      storeConnected: r.store_connected === true, liveAt: ts(r.live_at), lastSaleAt: ts(r.last_sale_at), firstSale: sale,
+      storeConnected: r.store_connected === true, liveAt: ts(r.live_at), lastSaleAt: ts(r.last_sale_at),
+      // A brand-new app sells only through the SDK, so a first sale before any SDK call means the app sold before RevenueDot.
+      firstSale: sale ? { ...sale, existing: sale.existing === true || ts(r.sdk_first_at) === null || ts(r.sdk_first_at)! > ts(r.live_at)! } : null,
       rcImportAt: ts(r.rc_import_at), importedCustomers: 0,
       paywallPublishedAt: ts(r.paywall_published_at), experimentStartedAt: ts(r.experiment_started_at),
       teammates: Number(r.teammates ?? 0), recoveryOn: r.recovery_on === true, assistantConnected: r.assistant_connected === true,
@@ -224,7 +256,7 @@ export async function loadFacts(db: DB, userIds: string[], now: Date, since: Dat
       plan, planSince: plan === "standard" && (ts(r.ba_started) ?? 0) >= sinceMs ? ts(r.ba_started) : null,
       canceledAt: plan === "free" && r.ba_sub && r.ba_started && String(r.ba_status) === "canceled" ? ts(r.ba_updated_at) : null,
       overTracked: Number(r.over_tracked ?? 0),
-      tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at),
+      tracked: Number(r.tracked ?? 0), free100At: ts(r.free100_at), alertAt: ts(r.alert_at), sdkCustomers: Number(r.sdk_customers ?? 0), customers: Number(r.customers ?? 0),
       lastNotificationAt: ts(r.last_notification_at), referralJoinedAt: ts(r.referral_joined_at), sent,
     };
   });
@@ -262,7 +294,9 @@ export async function contextFor(db: DB, f: Facts, step: StepId, base: string, u
     migrating: migrating(f),
     liveSince: f.liveAt ? new Date(f.liveAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" }) : undefined,
     inviter: member ? f.memberOf!.inviter : null,
-    sale: f.firstSale ? { product: f.firstSale.product, amount: money(f.firstSale.amount, f.firstSale.currency), country: COUNTRY(f.firstSale.country) } : null,
+    sale: f.firstSale ? { product: f.firstSale.product, amount: money(f.firstSale.amount, f.firstSale.currency), country: COUNTRY(f.firstSale.country), existing: f.firstSale.existing === true } : null,
+    appCreated: f.firstAppAt !== null,
+    notificationsSeen: f.lastNotificationAt !== null && (f.rcImportAt === null || f.lastNotificationAt >= f.rcImportAt),
   };
   // The cutover compares a whole month at this month's pace; the upgrade emails quote the revenue so far.
   // The cutover prices a month at the last 7 days' pace (always at least 7 days live by then); the upgrade emails price the

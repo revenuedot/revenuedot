@@ -1,0 +1,1 @@
+CREATE INDEX "customers_project_sdk_seen" ON "customers" USING btree ("project_id") WHERE "customers"."last_seen_sdk_version" IS NOT NULL;

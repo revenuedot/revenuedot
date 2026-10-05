@@ -288,7 +288,9 @@ export const customers = pgTable("customers", {
   originalPurchaseDate: ts("original_purchase_date"),
   /** Offering forced for this customer by the REST API (overrides the current offering). */
   offeringOverrideId: text("offering_override_id"),
-}, (t) => [index("customers_project").on(t.projectId, t.lastSeen, t.id), index("customers_project_first_seen").on(t.projectId, t.firstSeen, t.id), index("customers_project_id").on(t.projectId, t.id)]);
+}, (t) => [index("customers_project").on(t.projectId, t.lastSeen, t.id), index("customers_project_first_seen").on(t.projectId, t.firstSeen, t.id), index("customers_project_id").on(t.projectId, t.id),
+  // Customers whose app called RevenueDot (imports leave the SDK fields empty): the lifecycle emails count them to tell a shipped app update from a test build.
+  index("customers_project_sdk_seen").on(t.projectId).where(sql`${t.lastSeenSdkVersion} IS NOT NULL`)]);
 
 /** Every app user id that points at a customer (the original id is an alias too). */
 export const customerAliases = pgTable("customer_aliases", {

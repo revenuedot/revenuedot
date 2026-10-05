@@ -26,7 +26,7 @@ function facts(o: Partial<Facts> = {}): Facts {
     firstAppAt: null, testPurchaseAt: null, sdkFirstAt: null, sdkLastAt: null, sdk: null, storeConnected: false, liveAt: null, lastSaleAt: null,
     firstSale: null, rcImportAt: null, importedCustomers: 0, paywallPublishedAt: null, experimentStartedAt: null, teammates: 0, recoveryOn: false,
     assistantConnected: false, plan: "free", planSince: null, canceledAt: null, tracked: 0, free100At: null, alertAt: null, lastNotificationAt: null,
-    referralJoinedAt: null, overTracked: 0, sent: new Map(), ...o,
+    referralJoinedAt: null, overTracked: 0, sdkCustomers: 0, customers: 0, sent: new Map(), ...o,
   };
 }
 const sent = (...steps: [StepId, number][]) => new Map<StepId, number>(steps);
@@ -53,15 +53,38 @@ describe("picking the step", () => {
     expect(pickStep(facts({ createdAt: created, sent: welcomed }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ createdAt: created, sent: welcomed, firstAppAt: created, testPurchaseAt: WED - 21 * H }), WED, cfg)).toBe("connect_app");
     expect(pickStep(facts({ createdAt: created, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 25 * H, sdk: { platform: "Flutter", version: "9.6.1" } }), WED, cfg)).toBe("store_keys");
-    // Store connected: nothing more to say until the first sale.
-    expect(pickStep(facts({ createdAt: WED - 5 * D, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 3 * D, storeConnected: true }), WED, cfg)).toBeNull();
+    // Store connected and no paywall: the paywall email, but not for someone switching (they already have one).
+    const ready = { createdAt: WED - 5 * D, sent: welcomed, firstAppAt: created, sdkFirstAt: WED - 3 * D - H, storeConnected: true };
+    expect(pickStep(facts(ready), WED, cfg)).toBe("paywall");
+    expect(pickStep(facts({ ...ready, paywallPublishedAt: WED - D }), WED, cfg)).toBeNull();
+    // A switcher in the same spot hasn't imported yet, so they get the import email instead.
+    expect(pickStep(facts({ ...ready, path: "revenuecat" }), WED, cfg)).toBe("need_hand");
+    // The paywall email waits two days after the store email.
+    expect(pickStep(facts({ ...ready, sent: sent(["welcome", WED - 5 * D], ["store_keys", WED - D]) }), WED, cfg)).toBeNull();
   });
 
-  it("offers a call once, on day 10, to someone whose app never connected", () => {
-    const f = facts({ createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D]) });
-    expect(pickStep(f, WED, cfg)).toBe("need_hand");
-    expect(pickStep({ ...f, sent: sent(["welcome", WED - 10 * D], ["need_hand", WED - H]) }, WED, cfg)).toBeNull();
-    expect(pickStep({ ...f, sdkFirstAt: WED - 2 * D, storeConnected: true }, WED, cfg)).toBeNull();
+  it("sends one email matched to where someone is stuck: day 5 for builders, day 3 for switchers who never imported", () => {
+    const builder = facts({ createdAt: WED - 5 * D - H, sent: sent(["welcome", WED - 5 * D]) });
+    expect(pickStep(builder, WED, cfg)).toBe("need_hand");
+    expect(pickStep({ ...builder, createdAt: WED - 4 * D }, WED, cfg)).toBeNull();
+    expect(pickStep({ ...builder, sent: sent(["welcome", WED - 5 * D], ["need_hand", WED - H]) }, WED, cfg)).toBeNull();
+    expect(pickStep({ ...builder, sdkFirstAt: WED - 2 * D, storeConnected: true, paywallPublishedAt: WED - D }, WED, cfg)).toBeNull();
+    const switcher = facts({ path: "revenuecat", createdAt: WED - 3 * D - H, sent: sent(["welcome", WED - 3 * D]) });
+    expect(pickStep(switcher, WED, cfg)).toBe("need_hand");
+    expect(pickStep({ ...switcher, rcImportAt: WED - 2 * D, sent: sent(["welcome", WED - 3 * D], ["side_by_side", WED - D - H]) }, WED, cfg)).toBeNull();
+    // Later stuck points: no store five days after the store email; for switchers, no notifications five days after side_by_side.
+    const noStore = facts({ createdAt: WED - 12 * D, sdkFirstAt: WED - 7 * D, sent: sent(["welcome", WED - 12 * D], ["store_keys", WED - 5 * D - H]) });
+    expect(pickStep(noStore, WED, cfg)).toBe("need_hand");
+    expect(pickStep({ ...noStore, storeConnected: true, paywallPublishedAt: WED - D }, WED, cfg)).toBeNull();
+    const quiet = facts({ path: "revenuecat", createdAt: WED - 12 * D, rcImportAt: WED - 7 * D, sent: sent(["welcome", WED - 12 * D], ["side_by_side", WED - 5 * D - H]) });
+    expect(pickStep(quiet, WED, cfg)).toBe("need_hand");
+    expect(pickStep({ ...quiet, lastNotificationAt: WED - D }, WED, cfg)).toBeNull();
+  });
+
+
+  it("asks someone already selling to add the SDK even when store notifications already show sales", () => {
+    const f = facts({ createdAt: WED - 3 * D - H, firstAppAt: WED - 3 * D, storeConnected: true, liveAt: WED - 2 * D, lastSaleAt: WED - H, sent: sent(["welcome", WED - 3 * D], ["first_sale", WED - 2 * D]) });
+    expect(pickStep(f, WED, cfg)).toBe("connect_app");
   });
 
   it("never nudges for a step already done", () => {
@@ -74,13 +97,20 @@ describe("picking the step", () => {
     const base = { createdAt: WED - 2 * D, sent: sent(["welcome", WED - 2 * D]) };
     expect(pickStep(facts({ ...base, path: "revenuecat" }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...base, rcImportAt: WED - 25 * H, firstAppAt: WED - D }), WED, cfg)).toBe("side_by_side");
-    // No import after 10 days: no "need help" offer either, since they chose to move from RevenueCat on their own pace.
-    expect(pickStep(facts({ path: "revenuecat", createdAt: WED - 10 * D - H, sent: sent(["welcome", WED - 10 * D]) }), WED, cfg)).toBeNull();
+    // Never the new-developer emails: no connect_app even with an app and a test purchase.
+    expect(pickStep(facts({ ...base, path: "revenuecat", firstAppAt: WED - D, testPurchaseAt: WED - 21 * H }), WED, cfg)).toBeNull();
   });
 
   it("sends the cutover email a week after a migrator's first live sale, before anything else", () => {
-    const f = { path: "revenuecat" as const, createdAt: WED - 30 * D, rcImportAt: WED - 25 * D, liveAt: WED - 8 * D, lastSaleAt: WED - H, tracked: 6_000 };
+    const f = { path: "revenuecat" as const, createdAt: WED - 30 * D, rcImportAt: WED - 25 * D, liveAt: WED - 8 * D, sdkFirstAt: WED - 9 * D, sdkCustomers: 25, lastSaleAt: WED - H, tracked: 6_000 };
     expect(pickStep(facts(f), WED, cfg)).toBe("cutover");
+    // Not while only a test build talks to RevenueDot; still on time when the update reaches customers weeks later.
+    expect(pickStep(facts({ ...f, sdkCustomers: 2, sent: sent(["first_sale", WED - 8 * D]) }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...f, liveAt: WED - 40 * D }), WED, cfg)).toBe("cutover");
+    // A small app needs a tenth of its customers on the update (at least 3), not 25.
+    expect(pickStep(facts({ ...f, customers: 40, sdkCustomers: 4 }), WED, cfg)).toBe("cutover");
+    expect(pickStep(facts({ ...f, customers: 40, sdkCustomers: 2 }), WED, cfg)).toBeNull();
+    expect(pickStep(facts({ ...f, customers: 250, sdkCustomers: 24 }), WED, cfg)).toBeNull();
     expect(pickStep(facts({ ...f, sent: sent(["cutover", WED - 2 * D]) }), WED, cfg)).toBeNull();
   });
 
@@ -108,12 +138,12 @@ describe("picking the step", () => {
     expect(pickStep(facts({ alertAt: WED - H }), WED, cfg)).toBe("welcome");
   });
 
-  it("sends the upgrade email 3 days after the $10,000 email, and never to a Standard account", () => {
-    const live = { createdAt: WED - 60 * D, liveAt: WED - 50 * D, lastSaleAt: WED - 5 * D };
-    expect(pickStep(facts({ ...live, tracked: 12_000, free100At: WED - 2 * D }), WED, cfg)).toBeNull();
-    expect(pickStep(facts({ ...live, tracked: 12_000, free100At: WED - 3 * D - H }), WED, cfg)).toBe("upgrade_nudge");
-    expect(pickStep(facts({ ...live, tracked: 14_000, free100At: WED - 4 * D, plan: "standard" }), WED, cfg)).toBeNull();
+  it("sends a first sale and the Standard receipt right away, even inside the 44-hour gap", () => {
+    const recent = sent(["welcome", WED - 6 * D], ["store_keys", WED - H]);
+    expect(pickStep(facts({ createdAt: WED - 6 * D, sdkFirstAt: WED - 2 * D, storeConnected: true, liveAt: WED - H, lastSaleAt: WED - H, sent: recent }), WED, cfg)).toBe("first_sale");
+    expect(pickStep(facts({ createdAt: WED - 60 * D, plan: "standard", planSince: WED - H, sent: recent }), WED, cfg)).toBe("standard_welcome");
   });
+
 
   it("sends nothing to a live account but the one-off emails: no growth tips, referral asks or win-backs", () => {
     const live = facts({ createdAt: WED - 40 * D, liveAt: WED - 29 * D, lastSaleAt: WED - D, sdkLastAt: WED - H, tracked: 6_000 });
@@ -200,19 +230,25 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     expect((await s!.app.fetch(new Request(`http://localhost/auth/journeys/feedback/${token}?kind=nps&value=42`))).status).toBe(404);
   });
 
-  it("records the path picked in the welcome and redirects to its guide", async () => {
+  it("records the switching path only when the reader confirms it, so a mail scanner cannot", async () => {
     await cloud();
     await signup("sam@ai.dev");
     s!.advance(6 * 60_000);
     await run();
     const m = journeyMails("sam@ai.dev")[0]!;
     const link = /https:\/\/dash\.example\.com(\/auth\/journeys\/path\/[^?"]+\?path=revenuecat)/.exec(m.html.replace(/&amp;/g, "&"))![1]!;
-    const r = await s!.app.fetch(new Request(`http://localhost${link}`));
-    expect(r.status).toBe(302);
-    expect(r.headers.get("location")).toContain("/docs/migrate");
-    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "sam@ai.dev"));
-    expect(u!.journeyPath).toBe("revenuecat");
+    const user = async () => (await s!.db.select().from(schema.users).where(eq(schema.users.email, "sam@ai.dev")))[0]!;
+    const get = await s!.app.fetch(new Request(`http://localhost${link}`));
+    expect(get.status).toBe(200);
+    expect((await user()).journeyPath).toBeNull();
+    const post = await s!.app.fetch(new Request(`http://localhost${link.split("?")[0]}`, { method: "POST" }));
+    expect(post.status).toBe(302);
+    expect(post.headers.get("location")).toContain("/docs/migrate");
+    expect((await user()).journeyPath).toBe("revenuecat");
+    // The main button goes straight to the dashboard; no path is recorded for it.
+    expect(m.html).toContain("https://dash.example.com/projects/");
   });
+
 
   it("skips excluded domains and addresses", async () => {
     await cloud();
@@ -233,23 +269,6 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     expect(journeyMails("lena@health.eu")[0]!.subject).toContain("Confirm your email");
   });
 
-  it("prices the cutover on the last 7 days and the upgrade on the month that passed $10,000", async () => {
-    await cloud();
-    await signup("chris@studio.app");
-    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "chris@studio.app"));
-    const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
-    await s!.db.insert(schema.billingUsage).values({ projectId: p!.id, month: "2026-09", ownerUserId: u!.id, trackedRevenueUsd: 14_000, transactions: 100, computedAt: s!.now() });
-    await s!.db.insert(schema.billingNotices).values({ userId: u!.id, key: "2026-09:free_100", sentAt: new Date("2026-09-27T10:00:00Z") });
-    s!.setNow(new Date("2026-10-01T14:00:00Z")); // 3 days later, a new month with nothing tracked yet
-    const { loadFacts, contextFor } = await import("../src/services/journeys.js");
-    const [f] = await loadFacts(s!.db, [u!.id], s!.now(), SINCE);
-    expect(f!.overTracked).toBe(14_000);
-    const c = await contextFor(s!.db, f!, "upgrade_nudge", "https://dash.example.com", "u", null, s!.now());
-    expect(c.overMonth).toBe("September");
-    expect(c.bills!.revenuedot).toBe(20);
-    expect(journeyEmail(c).text).toContain("tracked $14,000 in September");
-  });
-
   it("keeps the referral code from sign-up and celebrates the first live sale", async () => {
     await cloud();
     await signup("jordan@photo.app", { ref: "k7m2q9xa", time_zone: "Nowhere/Invalid" });
@@ -260,14 +279,63 @@ describe("the tick pass", { timeout: 120_000 }, () => {
     await run(); // welcome
     const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
     await s!.db.insert(schema.apps).values({ id: "app_j", projectId: p!.id, name: "Photo iOS", type: "app_store", publicKey: "appl_j" });
+    await s!.db.insert(schema.sdkVersions).values({ projectId: p!.id, appId: "app_j", platform: "iOS", sdkVersion: "5.91.0", firstSeenAt: new Date(s!.now().getTime() - D), lastSeenAt: s!.now() });
     await s!.db.insert(schema.customers).values({ id: "cus_j", projectId: p!.id, originalAppUserId: "u1", firstSeen: s!.now(), lastSeen: s!.now() });
     await s!.db.insert(schema.transactions).values({ id: "tx_j", projectId: p!.id, customerId: "cus_j", appId: "app_j", store: "app_store", storeTransactionId: "1", productIdentifier: "pro_annual", kind: "purchase", purchasedAt: s!.now(), revenueUsd: 39.99, priceAmount: 39.99, priceCurrency: "USD", countryCode: "DE", isSandbox: false, createdAt: s!.now() });
     s!.advance(H);
     expect((await run()).sent).toBe(1);
     const sale = journeyMails("jordan@photo.app").at(-1)!;
-    expect(sale.subject).toBe("You just made your first real sale");
+    expect(sale.subject).toBe("You made your first real sale");
     expect(sale.text).toContain("pro_annual");
     expect(sale.text).toContain("Germany");
+  });
+
+  it("tells a converted trial apart from an app that already sold before RevenueDot", async () => {
+    await cloud();
+    await signup("lee@yoga.app");
+    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "lee@yoga.app"));
+    const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+    const { loadFacts } = await import("../src/services/journeys.js");
+    const tx = (id: string, customerId: string, kind: string, revenue: number, at: Date) => ({ id, projectId: p!.id, customerId, store: "app_store", storeTransactionId: id, productIdentifier: "yoga_annual",
+      kind, purchasedAt: at, revenueUsd: revenue, priceAmount: revenue, priceCurrency: "USD", countryCode: "US", isSandbox: false, createdAt: at });
+    const now = s!.now(), earlier = new Date(now.getTime() - 3 * D);
+    await s!.db.insert(schema.sdkVersions).values({ projectId: p!.id, platform: "iOS", sdkVersion: "5.91.0", firstSeenAt: new Date(earlier.getTime() - D), lastSeenAt: now });
+    await s!.db.insert(schema.customers).values([{ id: "cus_t", projectId: p!.id, originalAppUserId: "t", firstSeen: earlier, lastSeen: now }, { id: "cus_o", projectId: p!.id, originalAppUserId: "o", firstSeen: now, lastSeen: now }]);
+    // A trial that converts: the trial start is an earlier row, so this is still the app's first real sale.
+    await s!.db.insert(schema.transactions).values([tx("t1", "cus_t", "purchase", 0, earlier), tx("t2", "cus_t", "renewal", 59.99, now)]);
+    let [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
+    expect(f!.firstSale!.existing).toBe(false);
+    // A new purchase before any SDK call: the app sold before it came to RevenueDot.
+    await s!.db.delete(schema.transactions).where(eq(schema.transactions.projectId, p!.id));
+    await s!.db.delete(schema.sdkVersions).where(eq(schema.sdkVersions.projectId, p!.id));
+    await s!.db.insert(schema.transactions).values([tx("n1", "cus_o", "purchase", 59.99, now)]);
+    [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
+    expect(f!.firstSale!.existing).toBe(true);
+    await s!.db.insert(schema.sdkVersions).values({ projectId: p!.id, platform: "iOS", sdkVersion: "5.91.0", firstSeenAt: new Date(earlier.getTime() - D), lastSeenAt: now });
+    // A renewal from a subscriber RevenueDot never saw start: the app sold before it came to RevenueDot.
+    await s!.db.delete(schema.transactions).where(eq(schema.transactions.projectId, p!.id));
+    await s!.db.insert(schema.transactions).values([tx("o1", "cus_o", "renewal", 59.99, now)]);
+    [f] = await loadFacts(s!.db, [u!.id], now, SINCE);
+    expect(f!.firstSale!.existing).toBe(true);
+  });
+
+  it("counts customers seen through the SDK for a switcher, never imported ones, and stops after 25", async () => {
+    await cloud();
+    await signup("maya@habitly.app");
+    const [u] = await s!.db.select().from(schema.users).where(eq(schema.users.email, "maya@habitly.app"));
+    const [p] = await s!.db.select().from(schema.projects).where(eq(schema.projects.ownerUserId, u!.id));
+    const { loadFacts } = await import("../src/services/journeys.js");
+    const now = s!.now();
+    const customers = (n: number, prefix: string, sdk: string | null) => Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, projectId: p!.id, originalAppUserId: `${prefix}${i}`, firstSeen: now, lastSeen: now, lastSeenSdkVersion: sdk }));
+    await s!.db.insert(schema.customers).values([...customers(40, "imp", null), ...customers(3, "dbg", "5.91.0")]);
+    // Not a switcher yet: nothing counted.
+    expect((await loadFacts(s!.db, [u!.id], now, SINCE))[0]!.sdkCustomers).toBe(0);
+    await s!.db.update(schema.projects).set({ rcImportAt: now }).where(eq(schema.projects.id, p!.id));
+    expect((await loadFacts(s!.db, [u!.id], now, SINCE))[0]!.sdkCustomers).toBe(3);
+    await s!.db.insert(schema.customers).values(customers(30, "app", "5.91.0"));
+    const f = (await loadFacts(s!.db, [u!.id], now, SINCE))[0]!;
+    expect(f.sdkCustomers).toBe(25);
+    expect(f.customers).toBe(73);
   });
 
   it("never counts an imported purchase as a live sale, and gives a failed send's step back", async () => {
@@ -322,6 +390,29 @@ describe("templates", () => {
       expect(m.html, step).toMatch(/Questions\?|The RevenueDot team/);
       for (const [, url] of m.html.matchAll(/href="(https:\/\/(?:app\.)?revenuedot\.app\/(?!auth\/)[^"]*)"/g)) expect(url, step).toContain("utm_content=" + step);
     }
+  });
+
+  it("never mentions RevenueCat to someone who is not switching, and uses plain characters only", () => {
+    const base = { app: "https://app.revenuedot.app", first: "Sam", projectId: "p", projectName: "Notes", unsubscribeUrl: "https://app.revenuedot.app/auth/journeys/unsubscribe/x",
+      sdk: { platform: "Flutter", version: "9.6.1" }, sale: { product: "pro_annual", amount: "$39.99", country: "Germany" }, overTracked: 12_000, overMonth: "September",
+      bills: { revenuedot: 10, revenuecat: 120 }, testPurchase: true };
+    for (const step of STEP_IDS.filter((x) => !["side_by_side", "cutover"].includes(x))) {
+      const m = journeyEmail({ ...base, step, migrating: false });
+      const text = step === "welcome" ? m.text.replace("Switching from RevenueCat? Start here", "") : m.text;
+      expect(`${m.subject}\n${text}`, step).not.toMatch(/RevenueCat/);
+    }
+    for (const step of STEP_IDS) for (const migrating of [false, true]) {
+      const m = journeyEmail({ ...base, step, migrating });
+      expect(`${m.subject}${m.text}${m.html}`, step).not.toMatch(/[^\x00-\x7F]/);
+    }
+  });
+
+  it("celebrates a brand-new app's first sale, but tells an app that already sold that RevenueDot recorded it", () => {
+    const base = { step: "first_sale" as const, app: "https://app.revenuedot.app", first: "Lee", projectId: "p", projectName: "Pocket Yoga", unsubscribeUrl: "https://app.revenuedot.app/auth/journeys/unsubscribe/x" };
+    expect(journeyEmail({ ...base, sale: { product: "yoga_annual", amount: "$59.99", country: "Canada" } }).subject).toBe("You made your first real sale");
+    const existing = journeyEmail({ ...base, sale: { product: "yoga_annual", amount: "$59.99", country: "Canada", existing: true } });
+    expect(existing.subject).toBe("RevenueDot recorded its first Pocket Yoga sale");
+    expect(existing.text).not.toMatch(/first real sale|Congratulations/);
   });
 
   it("never turns a name someone else chose into a link", () => {

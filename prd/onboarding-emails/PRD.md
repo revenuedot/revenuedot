@@ -1,22 +1,23 @@
 # Onboarding and growth emails (RevenueDot Cloud)
 
-> **v4 (2026-10-05): the program is 11 emails. Everything below that is not in this list was cut.** Kai: the v3 emails were too long and dense, code snippets belong in the docs (an email's copy goes stale when the usage code changes), and a few emails customers love beat many that cause ad fatigue. Each email is now a few lines and links to the docs for the how-to.
+> **v6 (2026-10-05): 12 emails, designed by customer case.** Kai: not everyone is switching from RevenueCat; many have never heard of it. Every email uses one layout (logo, heading, one or two short lines, a screenshot or video, one button), has no code (the docs hold the how-to), offers no calls (product-led) and uses plain ASCII. Older sections below describe earlier versions.
 >
-> | Email | Goes to |
-> |---|---|
-> | `welcome` | everyone, 5 minutes after sign-up |
-> | `verify_reminder` | unconfirmed accounts, day 1 |
-> | `connect_app` | test purchase done, SDK not seen |
-> | `store_keys` | SDK seen, no store credentials |
-> | `need_hand` | no SDK call by day 10, one offer of a call |
-> | `side_by_side` | RevenueCat import done, not live |
-> | `first_sale` | first real sale |
-> | `cutover` | migrators, a week after the first live sale |
-> | `upgrade_nudge` | 3 days after the $10,000 email |
-> | `standard_welcome` | Standard started |
-> | `teammate_welcome` | people invited to a project |
+> **Cases.** The default reader is **building an app** and adding purchases for the first time; nothing they get mentions RevenueCat, except the welcome's one "Switching from RevenueCat? Start here" link. **Already selling with their own StoreKit or Billing code or another tool** follow the same track; the store email offers one-click product import. **Switching from RevenueCat** (chose that path in the welcome, or imported) get the switching track instead. **Teammates** get one welcome.
 >
-> Cut: first_purchase, checkin, ai_setup, go_live, last_call, switch_plan, import_help, forwarding_check, sandbox_only, upgrade_personal, pricing_explainer, enterprise, standard_canceled, paywalls, experiments, recovery, team, how_going, assistant, referral, went_quiet. The caps (one per 44 hours, three a week) are unchanged.
+> | Email | Goes to | When |
+> |---|---|---|
+> | `welcome` | every new owner | 5 minutes after sign-up |
+> | `verify_reminder` | unconfirmed owners | day 1 |
+> | `connect_app` | builders with a test purchase or an app, no SDK call | 20 hours after the test purchase, or day 3 |
+> | `store_keys` | anyone whose app called RevenueDot, no store connected | a day after the first SDK call |
+> | `paywall` | builders with a store connected, no paywall, no sale | 3 days after the first SDK call, at least 2 days after `store_keys` |
+> | `need_hand` | anyone stuck, matched to their step: no test purchase, no SDK, or (switchers) no import | day 5 for builders, day 3 for switchers who never imported |
+> | `side_by_side` | switchers, after the import | a day after the import |
+> | `first_sale` | everyone (switchers get their own version) | first real sale |
+> | `cutover` | switchers | a week after the first live sale |
+> | `upgrade_nudge` | Cloud Free accounts past $10,000 a month (RevenueCat comparison only for switchers) | 3 days after the billing notice |
+> | `standard_welcome` | new Standard accounts | when Standard starts |
+> | `teammate_welcome` | people invited to a project | 10 minutes after joining |
 
 
 **Status: building (2026-10-03), branch `lifecycle-email`.** Emails to the people who sign up for RevenueDot Cloud, sent on what each account has and has not done yet. Not to be confused with `prd/lifecycle/PRD.md` (win-back and retention emails a developer sends to *their* app's customers).
