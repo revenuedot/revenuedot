@@ -69,7 +69,7 @@ for (const p of PAGES) {
   out.push(`    vendor: ${q(NAMES[p.vendor])},`);
   out.push(`    page: ${q(p.page)},`);
   out.push(`    url: ${q(p.url)},`);
-  out.push(`    captured: DATE,`);
+  out.push(`    captured: ${p.date ? q(p.date) : "DATE"},`);
   out.push(`    full: asset(${q(p.vendor)}, ${q(e.full[0])}),`);
   if (e.full.length > 1) out.push(`    fullParts: [${e.full.map((f) => `asset(${q(p.vendor)}, ${q(f)})`).join(", ")}],`);
   out.push(`    crops: [`);
@@ -79,7 +79,7 @@ for (const p of PAGES) {
     out.push(`        claim: ${q(c.claim)},`);
     out.push(`        file: asset(${q(p.vendor)}, ${q(c.file)}),`);
     out.push(`        alt: ${q(cfg.alt)},`);
-    out.push(`        caption: ${q(`${pageLabel}, captured ${DATE}: ${cfg.caption}.`)},`);
+    out.push(`        caption: ${q(`${pageLabel}, captured ${p.date ?? DATE}: ${cfg.caption}.`)},`);
     out.push(`      },`);
     nCrops++;
   }

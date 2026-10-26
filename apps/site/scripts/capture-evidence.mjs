@@ -1,7 +1,8 @@
 // Evidence pack: dated screenshots of the vendor pages cited in src/data/compare.ts and src/data/alternatives.ts.
 //   node apps/site/scripts/capture-evidence.mjs --full --crops [--only vendor[/page],...] [--date YYYY-MM-DD]
 // Full pages: 1280 px wide at 1x, split every 4,000 CSS px. Crops: 2x, at most 1,600 px wide, around the element that holds
-// the claim text (see evidence-pages.mjs). Cookie banners are declined or hidden. Then run gen-evidence.mjs to rebuild
+// the claim text (see evidence-pages.mjs). Cookie banners are declined or hidden. A page with its own `date` (a recapture)
+// keeps that date in its file names. Then run gen-evidence.mjs to rebuild
 // src/data/evidence.ts. Uses @playwright/test and sharp from the workspace.
 import { createRequire } from "node:module";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
@@ -157,6 +158,7 @@ for (const p of PAGES) {
   if (only && !only.has(key) && !only.has(p.vendor)) continue;
   const dir = path.join(OUT, p.vendor);
   mkdirSync(dir, { recursive: true });
+  const date = p.date ?? DATE;
   const entry = { vendor: p.vendor, page: p.page, url: p.url, ok: false, full: [], crops: [], error: null };
   const page = await ctx.newPage();
   try {
@@ -179,7 +181,7 @@ for (const p of PAGES) {
     if (doFull) {
       const SEG = 4000;
       if (H <= SEG) {
-        const f = `${p.page}-full-${DATE}.png`;
+        const f = `${p.page}-full-${date}.png`;
         if (p.pre) await shotRegion(page, { x: 0, y: 0, width: 1280, height: H }, path.join(dir, f));
         else await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000 });
         await shrink(path.join(dir, f), 1280, 85);
@@ -187,7 +189,7 @@ for (const p of PAGES) {
       } else {
         let i = 1;
         for (let off = 0; off < H; off += SEG, i++) {
-          const f = `${p.page}-full-${i}-${DATE}.png`;
+          const f = `${p.page}-full-${i}-${date}.png`;
           const seg = { x: 0, y: off, width: 1280, height: Math.min(SEG, H - off) };
           if (p.pre) await shotRegion(page, seg, path.join(dir, f));
           else await page.screenshot({ path: path.join(dir, f), fullPage: true, timeout: 180000, clip: seg });
@@ -201,7 +203,7 @@ for (const p of PAGES) {
         const found = norm(text).includes(norm(c.verify ?? c.text));
         const rect = await cropRect(page, c).catch((e) => { entry.error = String(e).slice(0, 200); return null; });
         if (!rect) { entry.crops.push({ claim: c.claim, file: null, found, error: "locator not found" }); continue; }
-        const f = `${p.page}-${c.claim}-${DATE}.png`;
+        const f = `${p.page}-${c.claim}-${date}.png`;
         const fp = path.join(dir, f);
         if (p.pre) await shotRegion(page, rect, fp);
         else await page.screenshot({ path: fp, fullPage: true, timeout: 180000, clip: rect });

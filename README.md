@@ -233,7 +233,7 @@ RevenueCat charges 1% of all tracked revenue once it passes $2,500 a month, befo
 | Keep the RevenueCat SDK | **Yes, one line** | Yes | Swap SDK | Swap SDK | Swap SDK | Swap SDK |
 | Paywalls, experiments, Customer Center | **Included** | Included | Paywalls are the product | Included | Included | Included |
 | Web checkout and web-to-app funnels | **Your Stripe account, no fee** | Web Billing, 1% | App-to-Web Checkout | Stripe and Paddle | Stripe and Paddle | Flows, Stripe and Paddle |
-| Price | **Free until $10K a month, then 0.5%, capped at $999** | Free to $2.5K, then 1% of all tracked revenue | Infrastructure free; paywalls 1% above $10K | Free to $5K, then 1% | Free to $7K, then 0.8% | Free to $10K; Pro $49 + $9.99 per extra $1K |
+| Price | **Free until $10K a month, then 0.5%, capped at $999** | Free to $2.5K, then 1% of all tracked revenue | Infrastructure free; paywalls 1% above $10K | Free to $5K, then 1% | Free to $7K, then 0.8% | Free to $10K; Pro 0.99% of all tracked revenue, at least $49 |
 | Data location | **Your cloud, your region** | Vendor cloud | Vendor cloud | Vendor cloud | Vendor cloud | Vendor cloud |
 | MCP server for AI agents | **Hosted and local, 38 tools** | Yes | Paywall editor MCP | Not in its docs | Yes | Yes |
 

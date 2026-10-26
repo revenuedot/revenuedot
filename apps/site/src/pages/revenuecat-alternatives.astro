@@ -20,13 +20,13 @@ const title = `The ${ALTERNATIVES.length} best RevenueCat alternatives in 2026`;
 const description = "RevenueDot, Adapty, Superwall, Qonversion, Apphud, Purchasely and building in-house, compared on price, open source and features, with sources.";
 const faq = I.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
 const id = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-// The pricing page of every vendor in the table, RevenueCat first, as captured on 4 October 2026.
+// The pricing page of every vendor in the table, RevenueCat first, as captured in October 2026.
 const PRICING_CROPS = [
   "RevenueCat/pricing/free-to-2500-then-1-percent",
   "Adapty/pricing/free-under-5k-then-1-percent",
   "Superwall/pricing/indie-10k-then-1-percent",
   "Qonversion/pricing/free-to-7k-then-0-8-percent",
-  "Apphud/pricing/free-10k-pro-expert",
+  "Apphud/pricing/pro-0-99-percent",
   "Purchasely/pricing/no-public-price",
   "IAPHUB/pricing/plans",
   "Nami ML/pricing/enterprise-only",
@@ -48,7 +48,7 @@ const PRICING_CROPS = [
         <tbody>{ALTERNATIVES.map((a) => <tr><th scope="row"><a href={`#${id(a.name)}`}>{a.name}</a></th><td set:html={md(a.bestFor)} /><td set:html={md(a.pricing)} /><td set:html={md(a.openSource)} /></tr>)}</tbody>
       </table></div>
       <div class="price-ev">
-        <p class="label">The pricing pages behind the table, as captured on 4 October 2026</p>
+        <p class="label">The pricing pages behind the table, as captured in October 2026</p>
         <p class="small muted">RevenueCat first, then each alternative. Each crop links to the live page and to the full-page capture.</p>
         <Evidence keys={PRICING_CROPS} layout="grid" width={300} />
       </div>

@@ -146,10 +146,10 @@ export const ALTERNATIVES: Alternative[] = [
   {
     name: "Apphud",
     url: "https://apphud.com",
-    bestFor: "Small apps that want flat monthly plans and no-code web funnels.",
+    bestFor: "Small apps that want a free plan up to $10K a month and no-code web funnels.",
     summary:
       "A hosted subscription backend with revenue analytics, experiments, rules, a visual screen builder, paywall screens from Figma designs, and no-code web funnels (Flows) paid through Stripe or Paddle. Data is stored in the EU and US.",
-    pricing: "Free with $10K of monthly tracked revenue. Pro is $49 a month with $5K included, then $9.99 per extra $1,000. Expert is $59 with $5K included, then $11.99 per $1,000. Enterprise starts at $100K and is quoted.",
+    pricing: "Free up to $10K of monthly tracked revenue. Pro is 0.99% of tracked revenue, at least $49 a month. Expert is 1.19%, at least $59. Enterprise, for apps over $100K a month, is quoted.",
     openSource: "SDKs only (MIT). The backend is a hosted service.",
     selfHost: "No self-host option is listed.",
     pros: [
@@ -158,8 +158,8 @@ export const ALTERNATIVES: Alternative[] = [
       "Data stored in the EU and US, according to its data protection page.",
     ],
     cons: [
-      "Plan gating: server-to-server webhooks and daily exports need Expert.",
-      "Past the free limit, renewals stop being tracked after a 7-day grace period.",
+      "Plan gating: server-to-server webhooks and ETL exports need Expert.",
+      "Past the free limit, dashboard access ends after a 14-day grace period until you upgrade.",
       "Its own SDK, and its data protection page lists no SOC 2.",
     ],
     sources: [
@@ -168,7 +168,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("Apphud web payments docs", "https://docs.apphud.com/docs/web-payments"),
       src("Apphud iOS SDK on GitHub (MIT)", "https://github.com/apphud/ApphudSDK"),
     ],
-    evidence: ["Apphud/home/hero", "Apphud/pricing/free-10k-pro-expert", "Apphud/pricing/overage-rates"],
+    evidence: ["Apphud/home/hero", "Apphud/pricing/pro-0-99-percent", "Apphud/pricing/seats-and-webhooks", "Apphud/pricing/grace-period"],
     compare: "/compare/revenuedot-vs-apphud",
   },
   {
