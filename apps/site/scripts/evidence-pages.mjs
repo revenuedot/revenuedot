@@ -174,11 +174,12 @@ export const PAGES = [
     crops: [c("hero", "Skyrocket your app growth", "Apphud homepage hero: 'Skyrocket your app growth with a revenue data suite' for iOS and Android.", "Homepage hero", { minH: 620, maxH: 1100, extraTop: 80 })],
   }),
   p("apphud", "pricing", "https://apphud.com/pricing", {
+    date: "2026-10-26",
+    click: ["Is Apphud free to use?", "What if my MTR goes over $10K?"],
     crops: [
-      c("free-10k-pro-expert", "$10,000 MTR included", "Apphud pricing plan cards: Free with $10,000 MTR included and 1 seat; Pro with $5,000 MTR included and 5 seats; Expert with $5,000 MTR included and 10 seats.", "Free with $10K MTR; Pro and Expert include $5K", { minH: 760, maxH: 1300 }),
-      c("overage-rates", "$9.99 per additional $1,000 MTR on Pro plan", "Apphud pricing FAQ: $9.99 per additional $1,000 MTR on Pro, $11.99 on Expert; MTR is revenue in USD before Apple's cut and sandbox purchases are not counted.", "$9.99 per extra $1,000 on Pro, $11.99 on Expert", { click: "What if I go over MTR included to my plan?", verify: "$11.99", minH: 320, extraTop: 160 }),
-      c("grace-period", "After grace period is over we will still handle IAP purchases", "Apphud pricing FAQ on a Free plan over $10,000: a 7-day grace period, then purchases are handled but renewals are not tracked and dashboard access ends.", "Over the free limit: 7-day grace period, then renewals stop being tracked", { click: "What if my MTR goes over $10,000?", minH: 300, extraTop: 120 }),
-      c("seats-and-webhooks", "Server-to-server webhooks", "Apphud pricing feature table: server-to-server webhooks, on-demand raw data exports and seats (1, 5, 10) per plan.", "Webhooks and exports on Expert and above; 1, 5 or 10 seats", { verify: "10 seats", minH: 420, extraTop: 160, extraBottom: 160 }),
+      c("pro-0-99-percent", "0.99% of MTR", "Apphud pricing Pro card: 0.99% of MTR, at least $49 a month, with A/B tests, integrations and 5 seats.", "Pro costs 0.99% of MTR, at least $49 a month", { minH: 760, maxH: 1300 }),
+      c("grace-period", "we provide a 14-day grace period", "Apphud pricing FAQ: free if the app earns under $10K a month; paid plans are free in any month under $1K MTR; over $10K on Free, a 14-day grace period, then dashboard access ends while receipt validation and purchases keep working.", "Free under $10K a month, paid plans free under $1K, and a 14-day grace period over the free limit", { minH: 300, extraTop: 360, extraBottom: 120 }),
+      c("seats-and-webhooks", "Server-to-server webhooks", "Apphud pricing Expert card: 1.19% of MTR, at least $59 a month, with server-to-server webhooks, ETL exports and 10 seats.", "Expert costs 1.19% of MTR, at least $59 a month, and adds webhooks, ETL exports and 10 seats", { verify: "10 seats", minH: 420, extraTop: 160, extraBottom: 160 }),
     ],
   }),
   p("apphud", "data-protection", "https://apphud.com/data-protection", {

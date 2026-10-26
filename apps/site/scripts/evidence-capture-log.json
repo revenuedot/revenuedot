@@ -1927,66 +1927,6 @@
   },
   {
     "vendor": "apphud",
-    "page": "pricing",
-    "url": "https://apphud.com/pricing",
-    "ok": true,
-    "full": [
-      "pricing-full-1-2026-10-04.png",
-      "pricing-full-2-2026-10-04.png"
-    ],
-    "crops": [
-      {
-        "claim": "free-10k-pro-expert",
-        "file": "pricing-free-10k-pro-expert-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 0,
-          "y": 367.3125,
-          "width": 800,
-          "height": 819.953125
-        }
-      },
-      {
-        "claim": "overage-rates",
-        "file": "pricing-overage-rates-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 12,
-          "y": 3001.265625,
-          "width": 1256,
-          "height": 838
-        }
-      },
-      {
-        "claim": "grace-period",
-        "file": "pricing-grace-period-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 12,
-          "y": 3041.265625,
-          "width": 1256,
-          "height": 916
-        }
-      },
-      {
-        "claim": "seats-and-webhooks",
-        "file": "pricing-seats-and-webhooks-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 393.625,
-          "y": 433.3125,
-          "width": 800,
-          "height": 825.953125
-        }
-      }
-    ],
-    "error": null,
-    "status": 200,
-    "title": "Price - Apphud",
-    "pageHeight": 4917
-  },
-  {
-    "vendor": "apphud",
     "page": "data-protection",
     "url": "https://apphud.com/data-protection",
     "ok": true,
@@ -2159,5 +2099,54 @@
     "status": 200,
     "title": "Pricing: RevenueDot Cloud free up to $10K a month, self-host free",
     "pageHeight": 6483
+  },
+  {
+    "vendor": "apphud",
+    "page": "pricing",
+    "url": "https://apphud.com/pricing",
+    "ok": true,
+    "full": [
+      "pricing-full-1-2026-10-26.png",
+      "pricing-full-2-2026-10-26.png"
+    ],
+    "crops": [
+      {
+        "claim": "pro-0-99-percent",
+        "file": "pricing-pro-0-99-percent-2026-10-26.png",
+        "found": true,
+        "rect": {
+          "x": 500,
+          "y": 255.90625,
+          "width": 780,
+          "height": 810.0625
+        }
+      },
+      {
+        "claim": "grace-period",
+        "file": "pricing-grace-period-2026-10-26.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 3375.9375,
+          "width": 1280,
+          "height": 820
+        }
+      },
+      {
+        "claim": "seats-and-webhooks",
+        "file": "pricing-seats-and-webhooks-2026-10-26.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 1187.6875,
+          "width": 800,
+          "height": 808.34375
+        }
+      }
+    ],
+    "error": null,
+    "status": 200,
+    "title": "Simple predictable pricing",
+    "pageHeight": 5015
   }
 ]
