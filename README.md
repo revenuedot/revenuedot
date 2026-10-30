@@ -591,6 +591,8 @@ Block their app user ID under **Project settings → Blocked customers** or with
 <details><summary><b>Can I publish verified MRR and revenue numbers?</b></summary>
 
 Yes. **Project settings → Verified Metrics** publishes a public page at `/verified/<slug>` with your production MRR, revenue, subscriptions, trials and customers, 28-day sparklines and a link-preview image. It shows totals only, never customers or sandbox data.
+</details>
+
 <details><summary><b>Can I see which customers are behind a chart, like RevenueCat's Customers tab?</b></summary>
 
 Yes. Every chart has **Summary**, **Customers** and **Annotations** tabs, like RevenueCat's Charts v3 page ([RevenueCat docs](https://www.revenuecat.com/docs/dashboard-and-metrics/charts)). The Customers tab lists up to 100 customers behind the chart's current range, filters, segment and sandbox switch, each with their status, store, product and their part of the chart's number (their revenue, their MRR at the end of the range …), linked to the customer page. **Export all** downloads every one as CSV. The values add up to the chart; ad revenue from app users who never became customers is shown as its own amount. The API is `GET /v2/projects/{id}/charts/{chart_name}/customers` (`format=csv` for the export), and the docs publish the SQL behind revenue, new customers, new trials and MRR.
