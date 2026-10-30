@@ -16,12 +16,13 @@ RevenueDot is the open-source RevenueCat alternative: the first release is [v202
 
 **[Start for free on RevenueDot Cloud](https://app.revenuedot.app/signup)** · [Add in-app purchases](https://revenuedot.app/add-in-app-purchases) · [Migrate from RevenueCat](#migrate-from-revenuecat-in-three-steps) · [Docs](https://revenuedot.app/docs) · [Pricing](#pricing) · [Compare](#revenuedot-compared) · [FAQ](#faq)
 
+[![Star this repo on GitHub](https://img.shields.io/github/stars/revenuedot/revenuedot?style=for-the-badge&logo=github&label=Star%20this%20repo&color=F7B500)](https://github.com/revenuedot/revenuedot)
+
 [![Server: AGPL-3.0](https://img.shields.io/badge/server-AGPL--3.0-0A0A0A)](LICENSING.md)
 [![SDKs: MIT](https://img.shields.io/badge/SDKs-MIT-0A0A0A)](#sdks)
 [![Works with the RevenueCat SDK](https://img.shields.io/badge/works%20with-the%20RevenueCat%20SDK-0A0A0A)](#compatibility)
 [![Deploy](https://img.shields.io/github/actions/workflow/status/revenuedot/revenuedot/deploy.yml?branch=main&label=deploy&color=0A0A0A)](https://github.com/revenuedot/revenuedot/actions/workflows/deploy.yml)
 [![npm: revenuedot CLI](https://img.shields.io/npm/v/revenuedot?label=revenuedot%20CLI&color=0A0A0A)](https://www.npmjs.com/package/revenuedot)
-[![GitHub stars](https://img.shields.io/github/stars/revenuedot/revenuedot?style=flat&color=F7B500)](https://github.com/revenuedot/revenuedot/stargazers)
 
 <br>
 
@@ -57,6 +58,7 @@ RevenueDot is the open-source RevenueCat alternative: the first release is [v202
 - [Roadmap](#roadmap)
 - [FAQ](#faq)
 - [Contributing](#contributing) · [Security](#security) · [License](#license)
+- [Star history](#star-history)
 
 ## The whole stack, open source
 
@@ -589,6 +591,8 @@ Block their app user ID under **Project settings → Blocked customers** or with
 <details><summary><b>Can I publish verified MRR and revenue numbers?</b></summary>
 
 Yes. **Project settings → Verified Metrics** publishes a public page at `/verified/<slug>` with your production MRR, revenue, subscriptions, trials and customers, 28-day sparklines and a link-preview image. It shows totals only, never customers or sandbox data.
+</details>
+
 <details><summary><b>Can I see which customers are behind a chart, like RevenueCat's Customers tab?</b></summary>
 
 Yes. Every chart has **Summary**, **Customers** and **Annotations** tabs, like RevenueCat's Charts v3 page ([RevenueCat docs](https://www.revenuecat.com/docs/dashboard-and-metrics/charts)). The Customers tab lists up to 100 customers behind the chart's current range, filters, segment and sandbox switch, each with their status, store, product and their part of the chart's number (their revenue, their MRR at the end of the range …), linked to the customer page. **Export all** downloads every one as CSV. The values add up to the chart; ad revenue from app users who never became customers is shown as its own amount. The API is `GET /v2/projects/{id}/charts/{chart_name}/customers` (`format=csv` for the export), and the docs publish the SQL behind revenue, new customers, new trials and MRR.
@@ -822,3 +826,25 @@ Please report vulnerabilities privately through GitHub's **Report a vulnerabilit
 AGPL-3.0 for this repository, with the `ee/` folder under the [RevenueDot Enterprise License](ee/LICENSE). See [LICENSING.md](LICENSING.md) and [TRADEMARKS.md](TRADEMARKS.md).
 
 <sub>RevenueDot is not affiliated with, endorsed by or sponsored by RevenueCat, Inc. "RevenueCat" is a trademark of RevenueCat, Inc., used here only to describe compatibility. Other product names are trademarks of their owners.</sub>
+
+## Star history
+
+<div align="center">
+
+<a href="https://star-history.com/#revenuedot/revenuedot&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=revenuedot/revenuedot&type=Date&theme=dark">
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=revenuedot/revenuedot&type=Date">
+    <img alt="GitHub star history for RevenueDot over time" src="https://api.star-history.com/svg?repos=revenuedot/revenuedot&type=Date" width="600">
+  </picture>
+</a>
+
+<h2>Help more developers find RevenueDot</h2>
+
+If RevenueDot helps you build your app, or you want to follow its progress, please give the repo a star. It helps other app developers discover the project.
+
+[![Star this repo on GitHub](https://img.shields.io/github/stars/revenuedot/revenuedot?style=for-the-badge&logo=github&label=Star%20this%20repo&color=F7B500)](https://github.com/revenuedot/revenuedot)
+
+<sub>Click the badge, then use GitHub's Star button at the top of the page. Thanks for your support!</sub>
+
+</div>
