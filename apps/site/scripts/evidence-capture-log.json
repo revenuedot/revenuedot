@@ -1931,59 +1931,59 @@
     "url": "https://apphud.com/pricing",
     "ok": true,
     "full": [
-      "pricing-full-1-2026-10-04.png",
-      "pricing-full-2-2026-10-04.png"
+      "pricing-full-1-2026-11-02.png",
+      "pricing-full-2-2026-11-02.png"
     ],
     "crops": [
       {
-        "claim": "free-10k-pro-expert",
-        "file": "pricing-free-10k-pro-expert-2026-10-04.png",
+        "claim": "pro-rate",
+        "file": "pricing-pro-rate-2026-11-02.png",
         "found": true,
         "rect": {
-          "x": 0,
-          "y": 367.3125,
-          "width": 800,
-          "height": 819.953125
+          "x": 500,
+          "y": 255.90625,
+          "width": 780,
+          "height": 810.0625
         }
       },
       {
-        "claim": "overage-rates",
-        "file": "pricing-overage-rates-2026-10-04.png",
+        "claim": "expert-rate-and-webhooks",
+        "file": "pricing-expert-rate-and-webhooks-2026-11-02.png",
         "found": true,
         "rect": {
-          "x": 12,
-          "y": 3001.265625,
-          "width": 1256,
-          "height": 838
+          "x": 0,
+          "y": 1187.6875,
+          "width": 800,
+          "height": 808.34375
+        }
+      },
+      {
+        "claim": "free-under-10k",
+        "file": "pricing-free-under-10k-2026-11-02.png",
+        "found": true,
+        "rect": {
+          "x": 0,
+          "y": 4542.71875,
+          "width": 1280,
+          "height": 460
         }
       },
       {
         "claim": "grace-period",
-        "file": "pricing-grace-period-2026-10-04.png",
+        "file": "pricing-grace-period-2026-11-02.png",
         "found": true,
         "rect": {
-          "x": 12,
-          "y": 3041.265625,
-          "width": 1256,
-          "height": 916
-        }
-      },
-      {
-        "claim": "seats-and-webhooks",
-        "file": "pricing-seats-and-webhooks-2026-10-04.png",
-        "found": true,
-        "rect": {
-          "x": 393.625,
-          "y": 433.3125,
-          "width": 800,
-          "height": 825.953125
+          "x": 0,
+          "y": 4731.9375,
+          "width": 1280,
+          "height": 460
         }
       }
     ],
     "error": null,
     "status": 200,
-    "title": "Price - Apphud",
-    "pageHeight": 4917
+    "title": "Simple, predictable pricing – Apphud",
+    "pageHeight": 5935
   },
   {
     "vendor": "apphud",

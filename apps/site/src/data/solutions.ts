@@ -202,7 +202,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
         h2: "Already on RevenueCat? Here is the bill and the five-step move",
         label: "Switching",
         paras: [
-          "RevenueCat is free below $2,500 of monthly tracked revenue. Once an app reaches $2,500, it charges 1% of all tracked revenue, according to its [pricing page](https://www.revenuecat.com/pricing) (checked October 2026). Its paywall and funnel tools are priced separately.",
+          "RevenueCat is free below $2,500 of monthly tracked revenue. Once an app reaches $2,500, it charges 1% of all tracked revenue, according to its [pricing page](https://www.revenuecat.com/pricing) (checked November 2026). Its paywall and funnel tools are priced separately.",
         ],
         table: {
           head: ["Monthly tracked revenue", "RevenueCat", "RevenueDot Cloud"],
@@ -261,7 +261,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
       },
       {
         q: "How much does RevenueCat cost for a small app?",
-        a: "RevenueCat is free up to $2,500 of monthly tracked revenue, then 1% of all tracked revenue once you pass it, per its pricing page checked in October 2026. An app with $10,000 a month pays $100, and one with $50,000 pays $500. Paywall and funnel tools are priced separately.",
+        a: "RevenueCat is free up to $2,500 of monthly tracked revenue, then 1% of all tracked revenue once you pass it, per its pricing page checked in November 2026. An app with $10,000 a month pays $100, and one with $50,000 pays $500. Paywall and funnel tools are priced separately.",
       },
       {
         q: "Is there a free alternative to RevenueCat?",
@@ -342,7 +342,7 @@ let isPro = try await Purchases.shared.customerInfo().entitlements["pro"]?.isAct
         label: "Cost",
         paras: [
           "RevenueDot Cloud is free until your apps make $10,000 a month, then 0.5% of revenue above $10,000, never more than $999 a month, across all your projects. Pro includes unlimited apps, projects and teammates. [Start for free on RevenueDot Cloud](https://app.revenuedot.app/signup). See [pricing](/pricing).",
-          "For comparison, RevenueCat charges 1% of all monthly tracked revenue once it reaches $2,500 ([pricing](https://www.revenuecat.com/pricing), checked October 2026).",
+          "For comparison, RevenueCat charges 1% of all monthly tracked revenue once it reaches $2,500 ([pricing](https://www.revenuecat.com/pricing), checked November 2026).",
         ],
       },
       {

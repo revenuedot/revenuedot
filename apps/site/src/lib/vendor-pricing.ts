@@ -1,5 +1,5 @@
 // Published pricing rules of subscription platforms, as monthly cost for a month of tracked revenue (USD, before the
-// store's cut). Checked October 2026 against each vendor's pricing page; the same rules drive /compare and /tools.
+// store's cut). Checked November 2026 against each vendor's pricing page; the same rules drive /compare and /tools.
 import type { Source } from "../data/types";
 import { CLOUD_CAP, CLOUD_FREE_UP_TO, CLOUD_RATE } from "./pricing";
 

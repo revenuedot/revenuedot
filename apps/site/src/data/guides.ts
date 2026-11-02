@@ -391,14 +391,14 @@ const IOS_ONLY: Guide = {
 };
 
 // ---- 4. Cheaper RevenueCat alternatives: the fee question, answered with a table ---------------------------------------
-// Every vendor price comes from the sourced rules in compare.ts (checked October 2026). Vendors without a public price are left out.
+// Every vendor price comes from the sourced rules in compare.ts (checked November 2026). Vendors without a public price are left out.
 const feeSources = CHEAPER_FEES.sources.map((s) => `[${s.label}](${s.url})`).join(", ");
 const CHEAPER: Guide = {
   path: "/cheaper-revenuecat-alternatives",
   parents: [{ name: "RevenueCat alternatives", path: "/revenuecat-alternatives" }],
   name: "Cheaper RevenueCat alternatives",
   card: "RevenueCat, Adapty, Qonversion, Superwall, Apphud and RevenueDot priced at $10K, $100K and $1M a month, with sources.",
-  label: "Alternatives · checked October 2026",
+  label: "Alternatives · checked November 2026",
   title: "Cheaper RevenueCat alternatives, priced at $10K, $100K and $1M a month",
   metaTitle: "Cheaper RevenueCat Alternatives: Fees Compared (2026)",
   metaDescription:
@@ -406,7 +406,7 @@ const CHEAPER: Guide = {
   answer:
     "RevenueDot Cloud is the cheapest hosted RevenueCat alternative at large sizes: free until your app makes $10,000 a month, then 0.5% of the revenue above $10,000, never more than $999 a month. At $10,000 a month RevenueDot Cloud, Superwall and Apphud all cost $0; at $100,000 RevenueDot Cloud costs $450 against $800 for Qonversion and $1,000 for RevenueCat; at $1,000,000 it costs $999 against $8,000 for Qonversion and $10,000 for RevenueCat. Superwall can be $0 at any size if no purchases go through its paywalls.",
   secondary: { href: "/tools/revenuecat-fee-calculator", label: "Calculate your own bill" },
-  note: "Prices come from each vendor's public pricing page, checked October 2026, and the sources are linked under the table.",
+  note: "Prices come from each vendor's public pricing page, checked November 2026, and the sources are linked under the table.",
   points: [
     { title: "RevenueCat: 1% of everything from $2,500", text: "Free below $2,500 a month, then 1% of all tracked revenue with no ceiling: $1,000 at $100,000 and $10,000 at $1,000,000." },
     { title: "RevenueDot Cloud: $0 to $10K, then 0.5%, capped at $999", text: "The only hosted plan here with a ceiling. Above $10,000 a month, 0.5% of the revenue past $10,000, never more than $999." },
@@ -418,12 +418,12 @@ const CHEAPER: Guide = {
       h2: "What each one charges at $10K, $100K and $1M a month",
       label: "Fee table",
       paras: [
-        "Monthly tracked revenue is what customers pay in the stores, before Apple's and Google's commission; every vendor here meters on that gross figure. Superwall's cell is the upper bound, reached only if every purchase converts through a Superwall paywall. Apphud's Pro plan is $49 a month with $5,000 included, then $9.99 per extra $1,000, and its Enterprise plan from $100,000 a month is quoted, so the $100,000 and $1,000,000 cells show the Pro list rate. Purchasely and Nami ML publish no prices and are left out.",
+        "Monthly tracked revenue is what customers pay in the stores, before Apple's and Google's commission; every vendor here meters on that gross figure. Superwall's cell is the upper bound, reached only if every purchase converts through a Superwall paywall. Apphud's Pro plan is 0.99% of tracked revenue, at least $49 a month, and its Enterprise plan for apps over $100,000 a month is quoted, so the $100,000 and $1,000,000 cells show the Pro list rate. Purchasely and Nami ML publish no prices and are left out.",
       ],
       table: {
         head: CHEAPER_FEES.head,
         rows: CHEAPER_FEES.rows,
-        caption: "Monthly fee at three levels of tracked revenue; Enterprise plans are custom and not shown. Sources: " + feeSources + ", and [RevenueDot pricing](/pricing). Vendors change prices, so check the page before you decide. The pricing pages as captured on 4 October 2026:",
+        caption: "Monthly fee at three levels of tracked revenue; Enterprise plans are custom and not shown. Sources: " + feeSources + ", and [RevenueDot pricing](/pricing). Vendors change prices, so check the page before you decide. The pricing pages as captured on 4 October 2026 (Apphud on 2 November 2026, after its price change):",
       },
       evidence: CHEAPER_FEES.evidence,
     },
@@ -431,8 +431,8 @@ const CHEAPER: Guide = {
       h2: "The cheapest option at each size",
       bullets: [
         "**At $10,000 a month:** RevenueDot Cloud, Superwall and Apphud's free plan all cost $0. Qonversion costs $80, and RevenueCat and Adapty $100 each.",
-        "**At $100,000 a month:** RevenueDot Cloud costs $450. Qonversion is next at $800, then Apphud at about $998 on its Pro list rate, and RevenueCat and Adapty at $1,000. Superwall is anywhere from $0 to $1,000.",
-        "**At $1,000,000 a month:** RevenueDot Cloud costs $999, its cap. Qonversion costs $8,000, Apphud about $9,989 at its Pro list rate, and RevenueCat and Adapty $10,000 each. Superwall is anywhere from $0 to $10,000.",
+        "**At $100,000 a month:** RevenueDot Cloud costs $450. Qonversion is next at $800, then Apphud at $990 on its Pro list rate, and RevenueCat and Adapty at $1,000. Superwall is anywhere from $0 to $1,000.",
+        "**At $1,000,000 a month:** RevenueDot Cloud costs $999, its cap. Qonversion costs $8,000, Apphud $9,900 at its Pro list rate, and RevenueCat and Adapty $10,000 each. Superwall is anywhere from $0 to $10,000.",
         "**At every size:** RevenueDot keeps the RevenueCat SDK, so switching does not change your app code beyond one proxy URL line.",
       ],
     },
@@ -444,7 +444,7 @@ const CHEAPER: Guide = {
         "**Adapty:** free while you earn under $5,000 a month, then 1% of that month's revenue, counted before store fees, per its [pricing page](https://adapty.io/pricing/). Add-ons such as Refund Saver (0.2%) and attribution ($0.03 per install) cost extra.",
         "**Qonversion:** free up to $7,000 a month, then 0.8% of all tracked revenue with no ceiling, per its [pricing page](https://qonversion.io/pricing). Every feature is in the one plan.",
         "**Superwall:** subscription infrastructure is free at any scale. Paywalls are free up to $10,000 a month of paywall-attributed revenue, then 1% of that revenue; Startup adds $49 a month and Scale $199, per its [pricing page](https://superwall.com/pricing) and [pricing FAQ](https://superwall.com/docs/support/faq/2801653905-how-does-superwalls-pricing-work).",
-        "**Apphud:** a free plan with $10,000 of monthly tracked revenue; Pro is $49 a month with $5,000 included, then $9.99 per extra $1,000; Enterprise from $100,000 a month is quoted, per its [pricing page](https://apphud.com/pricing).",
+        "**Apphud:** free under $10,000 of monthly tracked revenue; Pro is 0.99% of tracked revenue, at least $49 a month; Expert is 1.19%, at least $59; Enterprise for apps over $100,000 a month is quoted, per its [pricing page](https://apphud.com/pricing) (checked November 2, 2026).",
         "**RevenueDot:** Pro is free until your apps make $10,000 a month, then 0.5% of the revenue above $10,000, capped at $999 a month, per [RevenueDot pricing](/pricing). The server is open source under AGPL-3.0.",
       ],
     },
@@ -456,7 +456,7 @@ const CHEAPER: Guide = {
         "**Superwall** means adopting its SDK, and it does not cover Amazon or Roku, in-app currency or ad revenue, according to its own docs.",
         "**Qonversion** has no ceiling, so the 0.8% keeps growing: $8,000 a month at $1,000,000. Its docs list no Amazon Appstore support.",
         "**Adapty** charges 1% of all revenue past $5,000 plus add-on fees, and it uses its own SDK.",
-        "**Apphud** gates server-to-server webhooks and daily exports behind its Expert plan, and past the free limit it stops tracking renewals after a 7-day grace period.",
+        "**Apphud** gates server-to-server webhooks and ETL exports behind its Expert plan, and past the free limit it locks the dashboard after a 14-day grace period.",
         "**RevenueCat** is the one everyone else is measured against: SOC 2 Type II, 149K+ apps and years of production traffic, which is what the 1% pays for.",
       ],
     },
@@ -492,7 +492,7 @@ const CHEAPER: Guide = {
     },
     {
       q: "Is there a free RevenueCat alternative?",
-      a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of revenue above that, never more than $999 a month. Superwall offers free subscription infrastructure and bills only on paywall revenue above $10,000, and Apphud has a free plan with $10,000 of tracked revenue.",
+      a: "Yes. RevenueDot Cloud is free until your app makes $10,000 a month, then 0.5% of revenue above that, never more than $999 a month. Superwall offers free subscription infrastructure and bills only on paywall revenue above $10,000, and Apphud is free under $10,000 of tracked revenue a month.",
     },
   ],
   docs: [
