@@ -35,7 +35,7 @@ export const SITE = {
   analyticsToken: (import.meta.env.PUBLIC_CF_WEB_ANALYTICS_TOKEN as string | undefined) || "",
   datafast: DATAFAST,
   // Date competitor prices were last checked against their public pricing pages.
-  pricesChecked: "October 2026",
+  pricesChecked: "November 2026",
 } as const;
 
 // Main navigation: what RevenueDot is (features, solutions by case), what it costs, how to build with it. Switching
