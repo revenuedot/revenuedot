@@ -32,6 +32,7 @@ import type { Deps } from "../context.js";
 import { ensureFirstSaleCards } from "./assistant/first-sale.js";
 import { pruneStreams } from "./assistant/store.js";
 import { pruneRejected } from "../stores/rejected.js";
+import { retryAppleForwards } from "../stores/apple/notifications.js";
 import { pruneRateLimits } from "./rate-limit.js";
 import type { Mailer } from "../mail/index.js";
 import { subRowToDomain } from "../repo/customers.js";
@@ -71,6 +72,8 @@ export interface TickOptions {
   countBudgetMs?: number;
   /** Refund Control retries call the App Store here unless false (the Worker retries from the cron only). */
   consumption?: boolean;
+  /** Apple notification forwards that got no answer get one more try (stores/apple/notifications.ts): the Worker's cron only. */
+  forwardRetries?: boolean;
   /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
   strictUrls?: boolean;
   /** AdMob connections reload their ad units once a day here unless false (the Worker does it from the cron only). */
@@ -119,6 +122,10 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   let consumption = 0;
   if (opts.consumption !== false) {
     try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }); } catch (e) { console.error("tick: consumption information retries failed", e); }
+  }
+  let forwardRetries = 0;
+  if (opts.forwardRetries === true && !opts.signal?.aborted) {
+    try { forwardRetries = await retryAppleForwards(db, now, fetchImpl, { strict: opts.strictUrls }); } catch (e) { console.error("tick: notification forward retries failed", e); }
   }
   // Cloud's go-live gate holds production deliveries of paused accounts and sends held ones once Pro starts, before anything
   // goes out. Request-kicked runs (liveGate without the cloud edition) only hold; the cron does the rest. The senders also
@@ -234,7 +241,7 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
   for (const x of opts.extensions ?? []) {
     try { Object.assign(extensions, (await x.tick?.(db, now)) ?? {}); } catch (e) { console.error(`tick: ${x.name} failed`, e); }
   }
-  return { expired, secretsSealed, voided, consumption, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, counts, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, gate, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
+  return { expired, secretsSealed, voided, consumption, forwardRetries, sent, integrations, exports, credentialsChecked, storePrices, alerts, notifications, winback, counts, recovery, admob, funnelClientsPurged, attemptLogsPruned, firstSales, archives, moves, billing, gate, journeys, ...(opts.extensions?.length ? { extensions } : {}) };
 }
 
 let lastFunnelPurgeHour = -1;

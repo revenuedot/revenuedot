@@ -604,6 +604,7 @@ export const storeNotifications = pgTable("store_notifications", {
    * count, never part of the app's notification status, so anyone who knows an app id cannot turn it to failing.
    */
   rejected: boolean("rejected").notNull().default(false),
+  /** The forward's HTTP status; 0 = no answer; -1 = no answer after the cron's retry (Apple only). */
   forwardStatus: integer("forward_status"),
   receivedAt: created(),
 }, (t) => [index("notifications_app_time").on(t.appId, t.receivedAt), index("notifications_rejected_time").on(t.receivedAt).where(sql`${t.rejected}`)]);
