@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { eq } from "drizzle-orm";
 import { schema } from "@revenuedot/db";
 import { setAppleRootsForTesting } from "../src/stores/apple/index.js";
+import { FORWARD_RETRY_FAILED, retryAppleForwards } from "../src/stores/apple/notifications.js";
 import {
   APP_ID, DAY, T0, appleHarness, makePki, notificationBody, renewalInfo, signJws, transaction, type AppleHarness, type Pki,
 } from "./apple-fixtures.js";
@@ -315,5 +316,43 @@ describe("forwarding", () => {
       const [row] = await h!.db.select().from(schema.storeNotifications);
       expect(row!.forwardStatus).toBe(0);
     });
+  });
+
+  it("the cron retries a forward that got no answer once, after two minutes", async () => {
+    vi.stubGlobal("fetch", async () => { throw new TypeError("fetch failed"); });
+    h = await subscribed({ forwardUrl: "https://example.test/apple-forward" });
+    const body = await notificationBody(pki, "DID_RENEW", undefined, renewed, renewalInfo());
+    const at = T0 + 30 * DAY;
+    h.setNow(at);
+    expect((await h.notify(body)).status).toBe(200);
+    const status = async () => (await h!.db.select().from(schema.storeNotifications))[0]!.forwardStatus;
+    await vi.waitFor(async () => expect(await status()).toBe(0));
+    const sent: string[] = [];
+    const ok = (async (_url: string, init: RequestInit) => { sent.push(String(init.body)); return new Response("ok", { status: 200 }); }) as typeof fetch;
+    expect(await retryAppleForwards(h.db, new Date(at + 60_000), ok)).toBe(0);
+    expect(await retryAppleForwards(h.db, new Date(at + 3 * 60_000), ok)).toBe(1);
+    expect(sent).toEqual([body]);
+    expect(await status()).toBe(200);
+    expect(await retryAppleForwards(h.db, new Date(at + 4 * 60_000), ok)).toBe(0);
+  });
+
+  it("a forward with no answer after the retry is marked and never sent again; old ones are left alone", async () => {
+    vi.stubGlobal("fetch", async () => { throw new TypeError("fetch failed"); });
+    h = await subscribed({ forwardUrl: "https://example.test/down" });
+    const at = T0 + 30 * DAY;
+    h.setNow(at);
+    expect((await h.notify(await notificationBody(pki, "DID_RENEW", undefined, renewed, renewalInfo()))).status).toBe(200);
+    const status = async () => (await h!.db.select().from(schema.storeNotifications))[0]!.forwardStatus;
+    await vi.waitFor(async () => expect(await status()).toBe(0));
+    const down = (async () => { throw new TypeError("fetch failed"); }) as typeof fetch;
+    let calls = 0;
+    const counted = (async (...a: Parameters<typeof fetch>) => { calls++; return down(...a); }) as typeof fetch;
+    expect(await retryAppleForwards(h.db, new Date(at + 7 * 3_600_000), counted)).toBe(0);
+    expect(calls).toBe(0);
+    expect(await retryAppleForwards(h.db, new Date(at + 3 * 60_000), counted)).toBe(0);
+    expect(calls).toBe(1);
+    expect(await status()).toBe(FORWARD_RETRY_FAILED);
+    await retryAppleForwards(h.db, new Date(at + 4 * 60_000), counted);
+    expect(calls).toBe(1);
   });
 });

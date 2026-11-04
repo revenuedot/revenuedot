@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, between, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { newId, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord, Deps } from "../../context.js";
@@ -168,6 +168,39 @@ function forward(c: Context, db: DB, url: string, raw: string, contentType: stri
     await db.update(storeNotifications).set({ forwardStatus: status }).where(eq(storeNotifications.id, notificationId));
   })().catch((e) => console.error("Recording an Apple notification forward failed", e));
   try { c.executionCtx.waitUntil(task); } catch { /* Node has no execution context; the promise runs on its own. */ }
+}
+
+/** A forward with no answer (0) or none recorded (the Worker cancelled it) is tried once more after this long... */
+export const FORWARD_RETRY_AFTER_MS = 2 * 60_000;
+/** ...and not after this long, so a target that stays down is not sent a backlog later. */
+export const FORWARD_RETRY_WITHIN_MS = 6 * 3_600_000;
+/** Recorded when the retry got no answer either: never retried again. */
+export const FORWARD_RETRY_FAILED = -1;
+
+/**
+ * The cron's second try for Apple notifications whose forward got no answer, so a dual run's other server (RevenueCat)
+ * still gets the event: Apple was already answered 200 and will not resend it. Rejected requests are not retried.
+ */
+export async function retryAppleForwards(db: DB, now: Date, fetchImpl: typeof fetch = fetch, limit = 20) {
+  const due = await db.select({ id: storeNotifications.id, body: storeNotifications.body, url: apps.notificationForwardUrl })
+    .from(storeNotifications).innerJoin(apps, eq(apps.id, storeNotifications.appId))
+    .where(and(
+      isNotNull(apps.notificationForwardUrl), inArray(apps.type, ["app_store", "mac_app_store"]), eq(storeNotifications.rejected, false),
+      between(storeNotifications.receivedAt, new Date(now.getTime() - FORWARD_RETRY_WITHIN_MS), new Date(now.getTime() - FORWARD_RETRY_AFTER_MS)),
+      or(isNull(storeNotifications.forwardStatus), eq(storeNotifications.forwardStatus, 0)),
+    ))
+    .orderBy(storeNotifications.receivedAt).limit(limit);
+  let sent = 0;
+  for (const n of due) {
+    let status = FORWARD_RETRY_FAILED;
+    try {
+      const res = await fetchImpl(n.url!, { method: "POST", headers: { "content-type": "application/json" }, body: n.body, signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS) });
+      status = res.status;
+      sent++;
+    } catch { /* recorded as FORWARD_RETRY_FAILED */ }
+    await db.update(storeNotifications).set({ forwardStatus: status }).where(eq(storeNotifications.id, n.id));
+  }
+  return sent;
 }
 
 /**
