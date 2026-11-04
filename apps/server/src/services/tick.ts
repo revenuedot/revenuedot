@@ -72,7 +72,7 @@ export interface TickOptions {
   countBudgetMs?: number;
   /** Refund Control retries call the App Store here unless false (the Worker retries from the cron only). */
   consumption?: boolean;
-  /** Apple notification forwards that got no answer get one more try (stores/apple/notifications.ts) unless false. */
+  /** Apple notification forwards that got no answer get one more try (stores/apple/notifications.ts): the Worker's cron only. */
   forwardRetries?: boolean;
   /** RevenueDot Cloud: integrations and exports refuse URLs on private networks too (services/outbound.ts). */
   strictUrls?: boolean;
@@ -124,8 +124,8 @@ export async function tick(db: DB, now: Date, fetchImpl: typeof fetch = fetch, o
     try { consumption = await retryDueConsumption({ db, stores: opts.stores ?? {}, fetch: fetchImpl, now: () => now, encryptionKey: opts.encryptionKey, signingKey: opts.signingKey }); } catch (e) { console.error("tick: consumption information retries failed", e); }
   }
   let forwardRetries = 0;
-  if (opts.forwardRetries !== false) {
-    try { forwardRetries = await retryAppleForwards(db, now, fetchImpl); } catch (e) { console.error("tick: notification forward retries failed", e); }
+  if (opts.forwardRetries === true && !opts.signal?.aborted) {
+    try { forwardRetries = await retryAppleForwards(db, now, fetchImpl, { strict: opts.strictUrls }); } catch (e) { console.error("tick: notification forward retries failed", e); }
   }
   // Cloud's go-live gate holds production deliveries of paused accounts and sends held ones once Pro starts, before anything
   // goes out. Request-kicked runs (liveGate without the cloud edition) only hold; the cron does the rest. The senders also

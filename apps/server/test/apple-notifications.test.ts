@@ -330,7 +330,9 @@ describe("forwarding", () => {
     const sent: string[] = [];
     const ok = (async (_url: string, init: RequestInit) => { sent.push(String(init.body)); return new Response("ok", { status: 200 }); }) as typeof fetch;
     expect(await retryAppleForwards(h.db, new Date(at + 60_000), ok)).toBe(0);
-    expect(await retryAppleForwards(h.db, new Date(at + 3 * 60_000), ok)).toBe(1);
+    // Two overlapping cron runs: the row is claimed by one, so RevenueCat gets it once.
+    const runs = await Promise.all([retryAppleForwards(h.db, new Date(at + 3 * 60_000), ok), retryAppleForwards(h.db, new Date(at + 3 * 60_000), ok)]);
+    expect(runs.sort()).toEqual([0, 1]);
     expect(sent).toEqual([body]);
     expect(await status()).toBe(200);
     expect(await retryAppleForwards(h.db, new Date(at + 4 * 60_000), ok)).toBe(0);
