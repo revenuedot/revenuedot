@@ -64,7 +64,7 @@ export const ALTERNATIVES: Alternative[] = [
     bestFor: "Growth teams that want a hosted paywall and flow builder with deep A/B testing and SOC 2 Type II.",
     summary:
       "A hosted subscription backend with a drag-and-drop flow and paywall builder, 50+ templates, an AI generator, A/B tests with unlimited variants, web payments through Stripe and Paddle, and revenue analytics. Open-source SDKs cover iOS, Android, React Native, Flutter, Unity and more.",
-    pricing: "Free while you earn under $5K a month, then 1% of that month's revenue, counted before store fees. Add-ons cost extra: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20% revenue share, attribution $0.03 per attributed install. Enterprise is custom.",
+    pricing: "Free while you earn under $5K a month, then 1% of that month's revenue, counted before store fees. Add-ons cost extra: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20% of extra revenue, attribution priced on request. Enterprise is custom.",
     openSource: "SDKs only (MIT). The backend is a hosted service.",
     selfHost: "No self-host option is listed.",
     pros: [

@@ -474,10 +474,10 @@ const VS_ADAPTY: ComparePage = {
       topic: "Add-on fees",
       cells: [
         "None. Refund Control, win-back, exports and webhooks are included",
-        "Refund Saver 0.2% of revenue after $5K; Ads Manager 3.5% of ad spend; Mail 20% revenue share; payout acceleration 2.5%; attribution $0.03 per attributed install",
+        "Refund Saver 0.2% of revenue after $5K; Ads Manager 3.5% of ad spend; Mail 20% of extra revenue; Adapty Finance from 2.5% per advance; attribution priced on request",
       ],
       sources: [AD_PRICING],
-      evidence: [E.adAddons],
+      evidence: [],
     },
     {
       topic: "Stores and web",
@@ -593,7 +593,7 @@ const VS_ADAPTY: ComparePage = {
   checked: CHECKED,
   seeIt: ["paywalls", "experiments", "charts", "web-checkout"],
   video: "https://www.youtube.com/watch?v=OpVzL6kBMn4",
-  related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
+  related: ["/adapty-alternative", "/pricing/adapty", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-adapty", "/revenuecat-alternatives", "/pricing"],
 };
 
 // ---- 3. RevenueDot vs Qonversion ------------------------------------------------------------------------------------
@@ -781,7 +781,7 @@ const VS_QONVERSION: ComparePage = {
   checked: CHECKED,
   seeIt: ["paywalls", "experiments", "charts", "refunds"],
   video: "https://www.youtube.com/watch?v=OpVzL6kBMn4",
-  related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-qonversion", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
+  related: ["/qonversion-alternative", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-qonversion", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
 };
 
 // ---- 4. RevenueDot vs Superwall -------------------------------------------------------------------------------------
@@ -967,7 +967,7 @@ const VS_SUPERWALL: ComparePage = {
   checked: CHECKED,
   seeIt: ["paywalls", "experiments", "web-checkout", "charts"],
   video: "https://www.youtube.com/watch?v=lkwX_kc0NS8",
-  related: ["/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
+  related: ["/superwall-alternative", "/pricing/superwall", "/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives"],
 };
 
 // ---- 5. RevenueDot vs Apphud ----------------------------------------------------------------------------------------
@@ -1151,7 +1151,7 @@ const VS_APPHUD: ComparePage = {
   checked: CHECKED,
   seeIt: ["paywalls", "experiments", "charts", "web-checkout"],
   video: "https://www.youtube.com/watch?v=zbXBbXJ-Ltw",
-  related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-adapty", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
+  related: ["/apphud-alternative", "/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-adapty", "/revenuecat-alternatives", "/migrate-from-revenuecat", "/pricing"],
 };
 
 // ---- 6. RevenueCat vs Adapty (RevenueDot third) -----------------------------------------------------------------------
@@ -1216,11 +1216,11 @@ const VERSUS_RC_ADAPTY: ComparePage = {
       topic: "Other plans and fees",
       cells: [
         "Growth Tools: 1% only on conversions from paywalls, funnels and tests. Enterprise is custom",
-        "Add-ons: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20% revenue share, attribution $0.03 per install. Enterprise is custom",
+        "Add-ons: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20% of extra revenue, attribution priced on request. Enterprise is custom",
         "No add-on fees",
       ],
       sources: [RC_PRICING, AD_PRICING],
-      evidence: [E.rcGrowth, E.rcEnterprise, E.adAddons],
+      evidence: [E.rcGrowth, E.rcEnterprise],
     },
     {
       topic: "Stores and web",
@@ -1384,7 +1384,7 @@ const VERSUS_RC_ADAPTY: ComparePage = {
   checked: CHECKED,
   seeIt: ["paywalls", "experiments", "charts", "importer"],
   video: "https://www.youtube.com/watch?v=OpVzL6kBMn4",
-  related: ["/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-adapty", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives", "/pricing"],
+  related: ["/pricing/adapty", "/adapty-alternative", "/compare/revenuedot-vs-revenuecat", "/compare/revenuedot-vs-adapty", "/compare/revenuecat-vs-superwall", "/revenuecat-alternatives"],
 };
 
 // ---- 7. RevenueCat vs Superwall (RevenueDot third) ----------------------------------------------------------------------

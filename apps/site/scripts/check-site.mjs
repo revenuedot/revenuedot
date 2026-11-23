@@ -65,6 +65,7 @@ const expectTypes = {
   "/do-i-need-revenuecat": ["Organization", "WebPage", "FAQPage", "BreadcrumbList"],
   "/cheaper-revenuecat-alternatives": ["Organization", "WebPage", "HowTo", "FAQPage", "BreadcrumbList"],
   "/revenuecat-mcp": ["Organization", "WebPage", "HowTo", "FAQPage", "BreadcrumbList"],
+  ...Object.fromEntries(["/open-source-revenuecat", "/adapty-alternative", "/superwall-alternative", "/qonversion-alternative", "/apphud-alternative", "/pricing/adapty", "/pricing/superwall"].map((p) => [p, ["Organization", "WebPage", "SoftwareApplication", "FAQPage", "BreadcrumbList"]])),
 };
 const typesFor = (route) =>
   expectTypes[route] ??

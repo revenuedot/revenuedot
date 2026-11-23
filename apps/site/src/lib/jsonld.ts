@@ -1,5 +1,6 @@
 import { SITE, type Crumb, type Faq } from "../site";
 import { CARD_RULE, ENTERPRISE_PRICE, PLANS, PRICE_LINE } from "./pricing";
+import { SITE_MODIFIED } from "./modified";
 
 const ORG_ID = `${SITE.url}/#organization`;
 const APP_ID = `${SITE.url}/#software`;
@@ -153,6 +154,6 @@ export function webPage(a: { title: string; description: string; path: string; i
     publisher: { "@id": `${SITE.url}/#organization` },
     ...(a.image ? { primaryImageOfPage: { "@type": "ImageObject", url: new URL(a.image, SITE.url).href, width: 1200, height: 630 } } : {}),
     ...(a.about ? { about: { "@type": "Thing", name: a.about } } : {}),
-    ...(a.modified ? { dateModified: a.modified } : {}),
+    dateModified: a.modified ?? SITE_MODIFIED,
   };
 }
