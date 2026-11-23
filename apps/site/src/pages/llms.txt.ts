@@ -5,6 +5,7 @@ import { llmsFile, textResponse, videosSection, withStatus } from "../lib/llms";
 import { TOOLS, ALTERNATIVES, CHART_PAGES, COMPARISONS, INTEGRATIONS, LANDINGS, SECTIONS, chartPath, comparePath, integrationPath, landingPath } from "../data";
 import { plain } from "../lib/md";
 import { GLOSSARY } from "../data/glossary";
+import { VENDOR_PAGES } from "../data/vendor-pages";
 import { ERRORS } from "../data/errors";
 
 // llms.txt (https://llmstxt.org): the docs repo's llms.txt, the canonical index of every docs page, with its links
@@ -26,6 +27,7 @@ export const GET: APIRoute = () => {
     `- [The open-source RevenueCat alternative](${u("/revenuecat-alternative")}): keep the RevenueCat SDK, change one line, own your data`,
     `- [Best RevenueCat alternatives in 2026](${u("/revenuecat-alternatives")}): ${ALTERNATIVES.map((a) => a.name).join(", ")}, with sources`,
     `- [Cheaper RevenueCat alternatives](${u("/cheaper-revenuecat-alternatives")}): RevenueCat, Adapty, Qonversion, Superwall, Apphud and RevenueDot priced at $10K, $100K and $1M a month, with sources`,
+    ...VENDOR_PAGES.map((v) => `- [${v.title}](${u(v.path)}): ${v.card}`),
     `- [Changelog](${u("/changelog")}): what shipped`,
     `- [Security](${u("/security")}): report vulnerabilities to ${SITE.email.security}`,
     `- [Licensing and trademarks](${u("/legal/licensing")})`,

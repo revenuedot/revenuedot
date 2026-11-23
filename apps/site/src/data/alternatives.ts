@@ -64,7 +64,7 @@ export const ALTERNATIVES: Alternative[] = [
     bestFor: "Growth teams that want a hosted paywall and flow builder with deep A/B testing and SOC 2 Type II.",
     summary:
       "A hosted subscription backend with a drag-and-drop flow and paywall builder, 50+ templates, an AI generator, A/B tests with unlimited variants, web payments through Stripe and Paddle, and revenue analytics. Open-source SDKs cover iOS, Android, React Native, Flutter, Unity and more.",
-    pricing: "Free while you earn under $5K a month, then 1% of that month's revenue, counted before store fees. Add-ons cost extra: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20% revenue share, attribution $0.03 per attributed install. Enterprise is custom.",
+    pricing: "Free while you earn under $5K a month, then 1% of that month's revenue, counted before store fees. Add-ons cost extra: Refund Saver 0.2%, Ads Manager 3.5% of ad spend, Mail 20% of extra revenue, attribution priced on request. Enterprise is custom.",
     openSource: "SDKs only (MIT). The backend is a hosted service.",
     selfHost: "No self-host option is listed.",
     pros: [
@@ -149,7 +149,7 @@ export const ALTERNATIVES: Alternative[] = [
     bestFor: "Small apps that want flat monthly plans and no-code web funnels.",
     summary:
       "A hosted subscription backend with revenue analytics, experiments, rules, a visual screen builder, paywall screens from Figma designs, and no-code web funnels (Flows) paid through Stripe or Paddle. Data is stored in the EU and US.",
-    pricing: "Free with $10K of monthly tracked revenue. Pro is $49 a month with $5K included, then $9.99 per extra $1,000. Expert is $59 with $5K included, then $11.99 per $1,000. Enterprise starts at $100K and is quoted.",
+    pricing: "Free with $10K of monthly tracked revenue. Pro is 0.99% of all tracked revenue, at least $49 a month. Expert is 1.19%, at least $59. Enterprise is for apps over $100K a month and is quoted.",
     openSource: "SDKs only (MIT). The backend is a hosted service.",
     selfHost: "No self-host option is listed.",
     pros: [
@@ -159,7 +159,7 @@ export const ALTERNATIVES: Alternative[] = [
     ],
     cons: [
       "Plan gating: server-to-server webhooks and daily exports need Expert.",
-      "Past the free limit, renewals stop being tracked after a 7-day grace period.",
+      "Past the free limit, dashboard access ends after a 14-day grace period until you upgrade.",
       "Its own SDK, and its data protection page lists no SOC 2.",
     ],
     sources: [
@@ -168,7 +168,7 @@ export const ALTERNATIVES: Alternative[] = [
       src("Apphud web payments docs", "https://docs.apphud.com/docs/web-payments"),
       src("Apphud iOS SDK on GitHub (MIT)", "https://github.com/apphud/ApphudSDK"),
     ],
-    evidence: ["Apphud/home/hero", "Apphud/pricing/free-10k-pro-expert", "Apphud/pricing/overage-rates"],
+    evidence: ["Apphud/home/hero"],
     compare: "/compare/revenuedot-vs-apphud",
   },
   {

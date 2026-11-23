@@ -51,7 +51,7 @@ const metaDescription = (() => {
 })();
 const fmtDate = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
 ---
-<Base title={title} description={metaDescription} path={path} fullTitle={fullTitle} ogType={ogType} image={image} jsonld={[...jsonld, breadcrumbList(crumbs)]}>
+<Base title={title} description={metaDescription} path={path} fullTitle={fullTitle} ogType={ogType} image={image} modified={modified ?? published} jsonld={[...jsonld, breadcrumbList(crumbs)]}>
   {mdUrl && <link slot="head" rel="alternate" type="text/markdown" href={mdUrl} title="This page as Markdown" />}
   <div class:list={["docs", { "no-nav": !nav }]}>
     {nav && (

@@ -42,6 +42,7 @@ const item = (p?: BlogPost) => p && { id: p.entry.id, href: p.href, label: p.tit
   editLabel="Edit this post on GitHub"
   mdUrl={`${path}.md`}
   published={date || undefined}
+  modified={modified}
   section="Blog"
   image={image}
   jsonld={[blogPosting({ title, description, path, published: date || undefined, modified, author, image }), ...(faq.length ? [faqPage(faq)] : [])]}

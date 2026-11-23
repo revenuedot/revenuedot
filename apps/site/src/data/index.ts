@@ -13,6 +13,7 @@ import { ALTERNATIVES, ALTERNATIVES_INTRO } from "./alternatives";
 import { GLOSSARY } from "./glossary";
 import { ERRORS } from "./errors";
 import { GUIDES } from "./guides";
+import { VENDOR_PAGES } from "./vendor-pages";
 import { CHARTS as CATALOG, GROUPS, type ChartDef } from "../../../../packages/core/src/charts/catalog";
 
 export { ALTERNATIVE_PAGE, ALTERNATIVES, ALTERNATIVES_INTRO, GROUPS };
@@ -76,6 +77,7 @@ const STATIC: Record<string, Entry> = {
 };
 for (const t of TOOLS) STATIC[t.path] = { title: t.title, card: t.card, label: "Free tool" };
 for (const g of GUIDES) STATIC[g.path] = { title: g.name, card: g.card, label: "Guide" };
+for (const v of VENDOR_PAGES) STATIC[v.path] = { title: v.title, card: v.card, label: v.path.startsWith("/pricing/") ? "Pricing" : v.path === "/open-source-revenuecat" ? "Open source" : "Alternative" };
 
 export function entry(path: string): Entry | undefined {
   if (STATIC[path]) return STATIC[path];

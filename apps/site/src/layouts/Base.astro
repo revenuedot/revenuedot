@@ -11,6 +11,7 @@ import Analytics from "../components/Analytics.astro";
 import { SITE, type Crumb, type Faq } from "../site";
 import { organization, website, breadcrumbList, faqPage } from "../lib/jsonld";
 import { ogFor } from "../lib/og";
+import { SITE_MODIFIED } from "../lib/modified";
 
 interface Props {
   title: string;
@@ -26,9 +27,12 @@ interface Props {
   /** This page's social card, a 1200x630 PNG under /og (scripts/og.mjs). Defaults to the site card. */
   image?: string;
   imageAlt?: string;
+  /** When the page last changed (YYYY-MM-DD), for article:modified_time. Defaults to the last commit to the site. */
+  modified?: string;
 }
 const { title, description, path, crumbs, faq, jsonld = [], ogType = "website", noindex = false } = Astro.props;
 const canonical = new URL(path, SITE.url).href;
+const modified = Astro.props.modified ?? SITE_MODIFIED;
 const fullTitle = Astro.props.fullTitle ?? (path === "/" ? title : `${title} | RevenueDot`);
 // A page without its own card gets /og/<path>.png when scripts/og.mjs made one, else the site card.
 const image = Astro.props.image ?? ogFor(path);
@@ -67,6 +71,7 @@ const ld = JSON.stringify({ "@context": "https://schema.org", "@graph": graph })
   <meta property="og:title" content={fullTitle} />
   <meta property="og:description" content={description} />
   <meta property="og:url" content={canonical} />
+  <meta property="article:modified_time" content={modified} />
   <meta property="og:image" content={ogImage} />
   <meta property="og:image:width" content={String(ogW)} />
   <meta property="og:image:height" content={String(ogH)} />
