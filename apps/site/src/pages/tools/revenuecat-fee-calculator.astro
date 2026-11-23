@@ -11,7 +11,7 @@ const faq = [
   { q: "Does RevenueCat charge on revenue before or after the App Store cut?", a: "Before. Monthly tracked revenue is the gross amount customers pay, before the 15% or 30% store commission and taxes, so RevenueCat's 1% is about 1.2% of what you receive after a 15% commission." },
   { q: "What is the cheapest RevenueCat alternative?", a: "RevenueDot Cloud is free until your app makes $10,000 a month in tracked revenue. Then its Pro plan charges 0.5% of revenue above $10,000, never more than $999 a month, and it works with the RevenueCat SDK you already ship. Among hosted vendors, Qonversion charges 0.8% above $7,000 and Adapty 1% above $5,000." },
   { q: "How much would I save by switching from RevenueCat?", a: "Enter your monthly tracked revenue above. At $50,000 a month RevenueCat costs $500 a month, or $6,000 a year. RevenueDot Pro costs $200 a month at that level." },
-  { q: "Where do these prices come from?", a: "Each vendor's public pricing page, checked in October 2026. The links are under the calculator. Vendors change prices, so check the page before you decide." },
+  { q: "Where do these prices come from?", a: "Each vendor's public pricing page, checked in November 2026. The links are under the calculator. Vendors change prices, so check the page before you decide." },
 ];
 ---
 <ToolPage path="/tools/revenuecat-fee-calculator" name="RevenueCat fee calculator"
@@ -40,7 +40,7 @@ const faq = [
           return <div class={`row${v.id.startsWith("rd") ? " us" : ""}`} data-id={v.id}><span class="name">{v.name}<small>{v.rule}</small></span><span class="bar" style={`width:${(c / max) * 100}%`}></span><span class="amt">{usd(c)}</span></div>;
         })}
       </div>
-      <p class="tiny">Sources, checked October 2026: {VENDORS.flatMap((v) => v.sources).filter((s, i, a) => a.findIndex((x) => x.url === s.url) === i).map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel={s.url.startsWith("http") ? "noopener" : undefined}>{s.label}</a></>)}. Superwall's figure is an upper bound: it bills only paywall revenue.</p>
+      <p class="tiny">Sources, checked November 2026: {VENDORS.flatMap((v) => v.sources).filter((s, i, a) => a.findIndex((x) => x.url === s.url) === i).map((s, i) => <>{i > 0 && " · "}<a href={s.url} rel={s.url.startsWith("http") ? "noopener" : undefined}>{s.label}</a></>)}. Superwall's figure is an upper bound: it bills only paywall revenue.</p>
     </div>
   </div>
   <section class="section" id="table" slot="after">

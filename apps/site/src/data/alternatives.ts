@@ -6,7 +6,7 @@ const src = (label: string, url: string): Source => ({ label, url });
 
 export const ALTERNATIVES_INTRO: { answer: string; faq: { q: string; a: string }[]; checked: string } = {
   answer:
-    "The best RevenueCat alternative depends on what you want to change. RevenueDot is best if you want open source, a hosted plan that is free until your app makes $10,000 a month, and to keep the RevenueCat SDK. Adapty and Qonversion are the closest hosted alternatives, with paywall builders and A/B tests. Superwall is best for paywall experiments and bills only on paywall revenue. Apphud suits small apps on flat plans. Building in-house suits one-platform apps with simple products.",
+    "The best RevenueCat alternative depends on what you want to change. RevenueDot is best if you want open source, a hosted plan that is free until your app makes $10,000 a month, and to keep the RevenueCat SDK. Adapty and Qonversion are the closest hosted alternatives, with paywall builders and A/B tests. Superwall is best for paywall experiments and bills only on paywall revenue. Apphud suits small apps under $10,000 a month. Building in-house suits one-platform apps with simple products.",
   faq: [
     {
       q: "What is the cheapest RevenueCat alternative?",
@@ -146,10 +146,10 @@ export const ALTERNATIVES: Alternative[] = [
   {
     name: "Apphud",
     url: "https://apphud.com",
-    bestFor: "Small apps that want flat monthly plans and no-code web funnels.",
+    bestFor: "Small apps under $10K a month that want no-code web funnels.",
     summary:
       "A hosted subscription backend with revenue analytics, experiments, rules, a visual screen builder, paywall screens from Figma designs, and no-code web funnels (Flows) paid through Stripe or Paddle. Data is stored in the EU and US.",
-    pricing: "Free with $10K of monthly tracked revenue. Pro is $49 a month with $5K included, then $9.99 per extra $1,000. Expert is $59 with $5K included, then $11.99 per $1,000. Enterprise starts at $100K and is quoted.",
+    pricing: "Free up to $10K of monthly tracked revenue. Pro is 0.99% of all tracked revenue, at least $49 a month. Expert is 1.19%, at least $59 a month. Enterprise is quoted for apps over $100K a month.",
     openSource: "SDKs only (MIT). The backend is a hosted service.",
     selfHost: "No self-host option is listed.",
     pros: [
@@ -159,7 +159,7 @@ export const ALTERNATIVES: Alternative[] = [
     ],
     cons: [
       "Plan gating: server-to-server webhooks and daily exports need Expert.",
-      "Past the free limit, renewals stop being tracked after a 7-day grace period.",
+      "Past the free limit, dashboard access ends after a 14-day grace period until you upgrade.",
       "Its own SDK, and its data protection page lists no SOC 2.",
     ],
     sources: [
