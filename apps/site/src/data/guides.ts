@@ -441,7 +441,7 @@ const CHEAPER: Guide = {
       paras: ["The rules behind the table, in each vendor's own terms, with the page each one comes from."],
       bullets: [
         "**RevenueCat:** free up to $2,500 monthly tracked revenue, then 1% of all tracked revenue, not only the part above $2,500. Its [pricing FAQ](https://www.revenuecat.com/pricing/) gives $25 for $2,500, and [a staff reply](https://community.revenuecat.com/general-questions-7/questions-about-pro-plan-payments-3618) confirms the 1% covers the whole amount.",
-        "**Adapty:** free while you earn under $5,000 a month, then 1% of that month's revenue, counted before store fees, per its [pricing page](https://adapty.io/pricing/). Add-ons such as Refund Saver (0.2%) and attribution ($0.03 per install) cost extra.",
+        "**Adapty:** free while you earn under $5,000 a month, then 1% of that month's revenue, counted before store fees, per its [pricing page](https://adapty.io/pricing/). Add-ons such as Refund Saver (0.2% of revenue) and Ads Manager (3.5% of ad spend) cost extra.",
         "**Qonversion:** free up to $7,000 a month, then 0.8% of all tracked revenue with no ceiling, per its [pricing page](https://qonversion.io/pricing). Every feature is in the one plan.",
         "**Superwall:** subscription infrastructure is free at any scale. Paywalls are free up to $10,000 a month of paywall-attributed revenue, then 1% of that revenue; Startup adds $49 a month and Scale $199, per its [pricing page](https://superwall.com/pricing) and [pricing FAQ](https://superwall.com/docs/support/faq/2801653905-how-does-superwalls-pricing-work).",
         "**Apphud:** a free plan with $10,000 of monthly tracked revenue; Pro is $49 a month with $5,000 included, then $9.99 per extra $1,000; Enterprise from $100,000 a month is quoted, per its [pricing page](https://apphud.com/pricing).",
@@ -498,7 +498,7 @@ const CHEAPER: Guide = {
   docs: [
     { href: "/docs/getting-started/quickstart", label: "Quickstart" },
   ],
-  related: ["/tools/revenuecat-fee-calculator", "/revenuecat-alternatives", "/compare/revenuecat-vs-superwall-vs-revenuedot", "/compare/revenuedot-vs-revenuecat", "/pricing"],
+  related: ["/tools/revenuecat-fee-calculator", "/pricing/adapty", "/pricing/superwall", "/qonversion-alternative", "/apphud-alternative", "/revenuecat-alternatives"],
 };
 
 export const GUIDES: Guide[] = [IN_APP_PURCHASES, ADD_IAP, IOS_ONLY, CHEAPER];

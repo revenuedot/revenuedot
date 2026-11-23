@@ -3,6 +3,7 @@ import { SITE } from "../site";
 import { docsNav, blogPosts, lastModified } from "../lib/docs";
 import { seoPaths } from "../data";
 import { VIDEOS, WATCH, playerUrl } from "../lib/videos.mjs";
+import { SITE_MODIFIED } from "../lib/modified";
 
 // Every static .astro page except the 404 (derived from the file tree, so a new page is listed automatically),
 // plus every docs page and blog post from the docs repo with its last commit date.
@@ -11,7 +12,8 @@ const pages = Object.keys(import.meta.glob("./**/*.astro"))
   .map((p) => p || "/")
   .filter((p) => p !== "/404" && !p.includes("["))
   .sort();
-const LASTMOD = "2026-10-01";
+// The same date as each page's article:modified_time and WebPage dateModified (lib/modified.ts).
+const LASTMOD = SITE_MODIFIED;
 const priority = (p: string) => (p === "/" ? "1.0" : p.startsWith("/legal") || p === "/security" ? "0.3" : "0.8");
 
 const xml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

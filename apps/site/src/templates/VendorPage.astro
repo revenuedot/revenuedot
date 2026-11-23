@@ -1,0 +1,55 @@
+---
+// "X alternative", "X pricing" and "open-source RevenueCat" pages (data in src/data/vendor-pages.ts): answer-first head,
+// tables, an optional fee calculator, FAQ, related links.
+import Base from "../layouts/Base.astro";
+import PageHead from "../components/PageHead.astro";
+import Blocks from "../components/Blocks.astro";
+import Faq from "../components/Faq.astro";
+import Related from "../components/Related.astro";
+import CtaBand from "../components/CtaBand.astro";
+import Md from "../components/Md.astro";
+import VendorCalc from "../components/VendorCalc.astro";
+import { vendorPage } from "../data/vendor-pages";
+import { plain } from "../lib/md";
+import { ogFor } from "../lib/og";
+import { softwareApplication, webPage } from "../lib/jsonld";
+import { PRICE_SHORT } from "../lib/pricing";
+import { SITE } from "../site";
+interface Props { path: string }
+const page = vendorPage(Astro.props.path);
+const path = page.path;
+const image = ogFor(path);
+const faq = page.faq.map((f) => ({ q: f.q, a: plain(f.a) }));
+const before = page.calc ? page.blocks.slice(0, page.calc.after) : page.blocks;
+const after = page.calc ? page.blocks.slice(page.calc.after) : [];
+---
+<Base title={page.metaTitle} description={page.metaDescription} path={path} image={image} imageAlt={page.title}
+  crumbs={[...(page.parents ?? []), { name: page.name, path }]} faq={faq}
+  jsonld={[webPage({ title: page.title, description: page.metaDescription, path, image, about: page.name }), softwareApplication()]}>
+  <div class="wrap">
+    <PageHead label={page.label} title={page.title}>
+      <Md class="lede answer" text={page.answer} />
+      <div class="btns">
+        <a class="btn" href={SITE.signup}>Start for free</a>
+        {page.secondary && <a class="btn secondary" href={page.secondary.href}>{page.secondary.label} <span class="arrow">→</span></a>}
+      </div>
+      <p class="small muted note">RevenueDot Pro: {PRICE_SHORT} Already have an account? <a href={SITE.login}>Sign in</a></p>
+    </PageHead>
+  </div>
+  <Blocks blocks={before} />
+  {page.calc && <VendorCalc calc={page.calc} />}
+  <Blocks blocks={after} />
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="head"><p class="label">FAQ</p><h2 class="h2 sm">{page.name}: questions people ask</h2></div>
+      <Faq items={faq} open={0} />
+    </div>
+  </section>
+  <Related items={page.related} />
+  <CtaBand />
+</Base>
+<style>
+  .answer { max-width: 760px; }
+  .answer :global(a), .note a { color: var(--fg); }
+  .h2.sm { font-size: clamp(28px, 3.4vw, 40px); }
+</style>

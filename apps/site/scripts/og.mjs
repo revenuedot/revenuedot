@@ -194,6 +194,13 @@ add("/add-in-app-purchases", page(`${chrome("New to in-app purchases", "Add subs
 }
 add("/do-i-need-revenuecat", page(`${chrome("Honest answer", "Do you need RevenueCat for an iOS-only app?")}<div class="vis" data-og-safe><div><p class="cap">You need a backend when</p><div class="cols"><div><span>iOS only</span><b>StoreKit 2</b></div><div><span>+ Android or web</span><b>Backend</b></div><div><span>Webhooks, charts</span><b>Backend</b></div><div class="rd"><span>RevenueDot Cloud</span><b>$0 to $10K</b></div></div></div></div>`));
 
+// Alternative, vendor pricing and open-source pages (src/data/vendor-pages.ts)
+for (const v of await load("vendor-pages.ts", "VENDOR_PAGES")) {
+  const label = v.path.startsWith("/pricing/") ? `Pricing · checked ${"November 2026"}` : v.path === "/open-source-revenuecat" ? "Open source · checked 2026-11-22" : "Alternative · checked November 2026";
+  const title = v.path === "/open-source-revenuecat" ? "Open-source RevenueCat alternatives, compared" : v.title.replace(/ that is .*| with .*| capped .*/, "");
+  add(v.path, page(`${chrome(label, title)}<div class="vis" data-og-safe><div><p class="cap">${esc(v.og.cap)}</p><div class="cols">${v.og.rows.map(([n, a]) => `<div class="${/RevenueDot/.test(n) ? "rd" : ""}"><span>${esc(n)}</span><b>${esc(a)}</b></div>`).join("")}</div></div></div>`));
+}
+
 // Glossary
 const srcLogos = (t) => [/apple\.com/.test(t.sources.map((x) => x.url).join()) && "apple.svg", /android\.com|google\.com/.test(t.sources.map((x) => x.url).join()) && "google-play.svg"].filter(Boolean);
 for (const t of GLOSSARY) {

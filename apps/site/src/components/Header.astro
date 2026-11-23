@@ -51,7 +51,7 @@ const current = (href: string) => path === href || path.startsWith(href + "/");
   @media (max-width: 1140px) { .nav { display: none; } .menu { display: block; } .bar { gap: 16px; } }
   @media (max-width: 640px) { .gh { display: none; } }
   /* Phones: logo, Sign in, Start for free and the menu button must fit in 358px (390px less the 16px gutters). */
-  @media (max-width: 420px) { .bar { gap: 10px; } .brand :global(svg) { height: 18px; width: auto; } .signin { padding: 0 4px; } .actions { gap: 6px; } }
+  @media (max-width: 420px) { .bar { gap: 10px; } .brand { --logo-h: 18px; } .signin { padding: 0 4px; } .actions { gap: 6px; } }
   @media (max-width: 385px) { .signin { display: none; } }
-  @media (max-width: 340px) { .bar { gap: 6px; } .brand :global(svg) { height: 16px; } }
+  @media (max-width: 340px) { .bar { gap: 6px; } .brand { --logo-h: 16px; } }
 </style>
