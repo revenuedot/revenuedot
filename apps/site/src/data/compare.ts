@@ -149,7 +149,7 @@ const LEVELS = [5_000, 10_000, 50_000, 250_000, 1_000_000];
 const rcBill = (m: number) => (m >= 2_500 ? m * 0.01 : 0); // 1% of ALL tracked revenue once at $2,500 (pricing FAQ, staff reply)
 const adaptyBill = (m: number) => (m > 5_000 ? m * 0.01 : 0); // 1% of all revenue once past $5K (pricing FAQ)
 const qonversionBill = (m: number) => (m > 7_000 ? m * 0.008 : 0); // 0.8% of ALL tracked revenue once past $7K (pricing FAQ)
-const apphudPro = (m: number) => Math.max(49, m * 0.0099); // Pro: 0.99% of all tracked revenue, at least $49 a month (pricing page, November 2026)
+const apphudPro = (m: number) => 49 + (Math.max(0, m - 5_000) / 1_000) * 9.99; // Pro: $49 incl. $5K, then $9.99 per extra $1,000
 
 type Col = { head: string; cell: (m: number) => string };
 const COL_RC: Col = { head: "RevenueCat", cell: (m) => usd(rcBill(m)) };
@@ -978,9 +978,9 @@ const VS_APPHUD: ComparePage = {
   title: "RevenueDot vs Apphud: open source and free until $10K a month vs plan-based hosted pricing",
   metaTitle: "RevenueDot vs Apphud: Price, Features, Open Source",
   metaDescription: "RevenueDot vs Apphud compared: Free, Pro and Expert plans against RevenueDot's cap, stores, web funnels and webhooks. Checked October 2026.",
-  card: "0.99% of revenue with a $49 minimum, or open source with a cap at $999.",
+  card: "Flat plans plus per-$1,000 overage, or open source with a cap at $999.",
   answer:
-    "Apphud charges by plan: Free with $10K of tracked revenue, then Pro at 0.99% of all tracked revenue (at least $49 a month) or Expert at 1.19% (at least $59). RevenueDot Cloud is free until your app makes $10K a month, then Pro charges 0.5% above that, capped at $999. Apphud suits small apps that want web funnels and flat plans. RevenueDot suits teams that want open source, a bill capped at $999 a month and the RevenueCat SDK.",
+    "Apphud charges by plan: Free with $10K of tracked revenue, Pro at $49 a month, Expert at $59, each with extra revenue billed at $9.99 or $11.99 per $1,000. RevenueDot Cloud is free until your app makes $10K a month, then Pro charges 0.5% above that, capped at $999. Apphud suits small apps that want web funnels and flat plans. RevenueDot suits teams that want open source, a bill capped at $999 a month and the RevenueCat SDK.",
   choose: [
     {
       name: "RevenueDot",
@@ -997,7 +997,7 @@ const VS_APPHUD: ComparePage = {
         "You are small, you want flat monthly plans, and the free plan's $10K of tracked revenue is enough.",
         "You want no-code web funnels (Flows) with Stripe or Paddle, and Figma-to-paywall screens.",
         "You want data stored in the EU and US, as its data protection page says.",
-        "You like plan-based pricing with a known monthly minimum and one rate.",
+        "You like plan-based pricing with a known fee and overage per $1,000.",
       ],
     },
   ],
@@ -1024,10 +1024,10 @@ const VS_APPHUD: ComparePage = {
       topic: "Price",
       cells: [
         "Pro: free until $10K a month, then 0.5% above that, capped at $999",
-        "Free with $10K of tracked revenue; Pro 0.99% of all tracked revenue, at least $49 a month; Expert 1.19%, at least $59; Enterprise for apps over $100K a month",
+        "Free with $10K of tracked revenue; Pro $49 a month with $5K included, then $9.99 per extra $1,000; Expert $59 with $5K included, then $11.99 per $1,000; Enterprise from $100K",
       ],
       sources: [AP_PRICING],
-      evidence: [],
+      evidence: [E.apPlans, E.apOverage],
     },
     {
       topic: "What counts as revenue",
@@ -1036,9 +1036,9 @@ const VS_APPHUD: ComparePage = {
     },
     {
       topic: "Going past $10K a month",
-      cells: ["Nothing stops; above $10K, Pro charges 0.5% of the revenue above $10K", "After $10K, a 14-day grace period; then purchase processing continues, but dashboard access ends until you upgrade"],
+      cells: ["Nothing stops; above $10K, Pro charges 0.5% of the revenue above $10K", "After $10K, a 7-day grace period; then purchases are still handled, but renewals are not tracked and dashboard access ends"],
       sources: [AP_PRICING],
-      evidence: [],
+      evidence: [E.apGrace],
     },
     {
       topic: "Stores and web",
@@ -1095,11 +1095,11 @@ const VS_APPHUD: ComparePage = {
     },
   ],
   price: priceTable(
-    "Formulas: Apphud's Free plan includes $10K of tracked revenue. Above that, Pro costs 0.99% of all tracked revenue, at least $49 a month; Expert costs 1.19%, at least $59. Apphud sells Enterprise to apps over $100K a month, so the cells from $100K show the Pro list rate only. " +
+    "Formulas: Apphud's Free plan includes $10K of tracked revenue. Above that, Pro costs $49 plus $9.99 for each $1,000 above the $5K it includes; the table assumes the overage prorates. Expert costs $10 more a month and $2 more per $1,000. From $100K Apphud quotes Enterprise, so those cells show the Pro list rate only. " +
       RD_RATE,
     [COL_APPHUD, COL_CLOUD],
     [AP_PRICING],
-    [],
+    [E.apPlans, E.apOverage],
   ),
   blocks: [
     {
@@ -1117,7 +1117,7 @@ const VS_APPHUD: ComparePage = {
     {
       h2: "How Apphud's plans change the bill",
       paras: [
-        "Apphud mixes a monthly minimum with a percentage of revenue. Pro at $50,000 a month costs $495 and Expert $595, because both charge a share of all tracked revenue once you leave the free plan. Some features sit behind the plan: server-to-server webhooks and daily exports need Expert.",
+        "Apphud mixes a flat fee with a rate per $1,000. Pro at $50,000 a month costs about $499 and Expert about $599, so the rate is near 1% and 1.2% at that size. Some features sit behind the plan: server-to-server webhooks and daily exports need Expert.",
         "RevenueDot has one feature set. Webhooks, exports and experiments are included in Pro, even while it costs $0.",
       ],
     },
@@ -1125,7 +1125,7 @@ const VS_APPHUD: ComparePage = {
       h2: "Where Apphud is stronger",
       bullets: [
         "No-code web funnels (Flows) with Stripe or Paddle, and paywall screens from Figma designs.",
-        "A free plan that covers apps up to $10K a month, more than RevenueCat or Adapty give.",
+        "A flat, predictable plan fee for small apps that stay within the included revenue.",
         "A published Enterprise tier with premium support and a dedicated support manager from $100K a month.",
       ],
     },
@@ -1133,15 +1133,15 @@ const VS_APPHUD: ComparePage = {
   faq: [
     {
       q: "How much does Apphud cost?",
-      a: "Apphud's Free plan includes $10,000 of monthly tracked revenue. Pro costs 0.99% of all tracked revenue, at least $49 a month. Expert costs 1.19%, at least $59 a month. Enterprise is for apps over $100,000 a month and is quoted. Paid plans are free in any month your tracked revenue is below $1,000.",
+      a: "Apphud's Free plan includes $10,000 of monthly tracked revenue. Pro costs $49 a month with $5,000 included, then $9.99 per extra $1,000. Expert costs $59 with $5,000 included, then $11.99 per $1,000. Enterprise starts at $100,000 and is quoted. Annual plans save 15%.",
     },
     {
       q: "Is Apphud cheaper than RevenueCat?",
-      a: "At small sizes, yes. Apphud's Free plan covers $10K a month, while RevenueCat charges $100 at $10,000. At $50,000, Apphud Pro costs $495 and RevenueCat $500, so they are close. RevenueDot Cloud is free until your app makes $10,000 a month and never costs more than $999.",
+      a: "At small sizes, yes. Apphud's Free plan covers $10K a month, while RevenueCat charges $100 at $10,000. At $50,000, Apphud Pro costs about $499 and RevenueCat $500, so they are close. RevenueDot Cloud is free until your app makes $10,000 a month and never costs more than $999.",
     },
     {
       q: "What happens if I go over Apphud's free plan?",
-      a: "Apphud gives a 14-day grace period with full dashboard access. After that, receipt validation and purchase processing keep working, but you lose dashboard access until you upgrade.",
+      a: "Apphud gives a 7-day grace period. After that it still handles in-app purchases, but it stops tracking renewals and you lose dashboard access until you upgrade.",
     },
     {
       q: "Can I migrate from Apphud to RevenueDot?",
@@ -2311,7 +2311,7 @@ export const CHEAPER_FEES = priceTable(
   "",
   [COL_RC, COL_ADAPTY, COL_QONVERSION, COL_SUPERWALL, COL_APPHUD, COL_CLOUD],
   [RC_PRICING, RC_STAFF, AD_PRICING, QO_PRICING, SW_PRICING, SW_FAQ, AP_PRICING],
-  [E.rcPrice, E.rcStaff, E.adPrice, E.qoPrice, E.qoTotal, E.swIndie, E.swAttributed],
+  [E.rcPrice, E.rcStaff, E.adPrice, E.qoPrice, E.qoTotal, E.swIndie, E.swAttributed, E.apPlans, E.apOverage],
   THREE_LEVELS,
 );
 
