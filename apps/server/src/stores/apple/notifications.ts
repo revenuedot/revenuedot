@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { newId, type Store } from "@revenuedot/core";
 import { schema, type DB } from "@revenuedot/db";
 import type { AppRecord, Deps } from "../../context.js";
@@ -13,6 +13,7 @@ import { JwsError, verifyAppleJws } from "./jws.js";
 import { fromTransaction, type AppleTransaction, type MapOptions } from "./map.js";
 import { logRejected, tooManyRejected } from "../rejected.js";
 import { withStoreSecretsOrNone } from "../../services/store-secrets.js";
+import { outboundUrlProblem } from "../../services/outbound.js";
 
 const { apps, storeNotifications, subscriptions, nonSubscriptions } = schema;
 
@@ -170,6 +171,43 @@ function forward(c: Context, db: DB, url: string, raw: string, contentType: stri
   try { c.executionCtx.waitUntil(task); } catch { /* Node has no execution context; the promise runs on its own. */ }
 }
 
+/** A forward with no answer (0, also what a forward cancelled before its answer leaves) is tried once more after this long... */
+export const FORWARD_RETRY_AFTER_MS = 2 * 60_000;
+/** ...and not after this long, so a target that stays down is not sent a backlog later. */
+export const FORWARD_RETRY_WITHIN_MS = 6 * 3_600_000;
+/** A row claimed by a retry, and what stays when the retry got no answer either: never retried again. */
+export const FORWARD_RETRY_FAILED = -1;
+
+/**
+ * The Worker cron's second try for Apple notifications whose forward got no answer, so a dual run's other server
+ * (RevenueCat) still gets the event: Apple was already answered 200 and will not resend it. Rows are claimed (-1) before
+ * sending, so overlapping cron runs never send one twice; the batch goes out in parallel, so a target that is down holds
+ * the tick for one timeout at most. Rejected requests are not retried.
+ */
+export async function retryAppleForwards(db: DB, now: Date, fetchImpl: typeof fetch = fetch, opts: { strict?: boolean; limit?: number } = {}) {
+  const res = await db.execute(sql`UPDATE store_notifications SET forward_status = ${FORWARD_RETRY_FAILED}
+    WHERE id IN (
+      SELECT n.id FROM store_notifications n JOIN apps a ON a.id = n.app_id
+      WHERE a.notification_forward_url IS NOT NULL AND a.type IN ('app_store', 'mac_app_store') AND n.rejected = false
+        AND n.forward_status = 0
+        AND n.created_at BETWEEN ${new Date(now.getTime() - FORWARD_RETRY_WITHIN_MS).toISOString()} AND ${new Date(now.getTime() - FORWARD_RETRY_AFTER_MS).toISOString()}
+      ORDER BY n.created_at LIMIT ${opts.limit ?? 20} FOR UPDATE OF n SKIP LOCKED)
+    RETURNING id, body, app_id`);
+  const claimed = (res as unknown as { rows?: { id: string; body: string; app_id: string }[] }).rows ?? (res as unknown as { id: string; body: string; app_id: string }[]);
+  if (!claimed.length) return 0;
+  const urls = new Map((await db.select({ id: apps.id, url: apps.notificationForwardUrl }).from(apps).where(inArray(apps.id, [...new Set(claimed.map((n) => n.app_id))]))).map((a) => [a.id, a.url]));
+  const results = await Promise.all(claimed.map(async (n) => {
+    const url = urls.get(n.app_id);
+    if (!url || outboundUrlProblem(url, !!opts.strict)) return false;
+    try {
+      const r = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json" }, body: n.body, redirect: "manual", signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS) });
+      await db.update(storeNotifications).set({ forwardStatus: r.status }).where(eq(storeNotifications.id, n.id));
+      return true;
+    } catch { return false; }
+  }));
+  return results.filter(Boolean).length;
+}
+
 /**
  * App Store Server Notifications V2: POST /v1/notifications/apple/{appId} with `{ signedPayload }`.
  * Apple retries anything but 2xx, so valid payloads get 200 even when the purchase is unknown; 400 means the payload
@@ -198,7 +236,8 @@ export function appleNotificationRoutes(deps: Deps) {
       }
     }
     const id = newId("ntf_", 16);
-    await db.insert(storeNotifications).values({ id, projectId: app.projectId, appId: app.id, store, body: raw, receivedAt: deps.now() });
+    // 0 until the forward's answer is recorded: one the Worker cancels stays 0, and the cron retries it.
+    await db.insert(storeNotifications).values({ id, projectId: app.projectId, appId: app.id, store, body: raw, receivedAt: deps.now(), forwardStatus: app.notificationForwardUrl ? 0 : null });
     if (app.notificationForwardUrl) forward(c, db, app.notificationForwardUrl, raw, contentType, id);
     const fail = async (status: 400 | 500, message: string) => {
       await db.update(storeNotifications).set({ error: message }).where(eq(storeNotifications.id, id));

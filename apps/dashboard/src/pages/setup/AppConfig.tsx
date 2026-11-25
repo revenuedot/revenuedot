@@ -231,7 +231,7 @@ function ForwardField({ d, set, errors, s, store }: { d: Draft; set: (p: Partial
     <Field label="Forward notifications to RevenueCat or your own server" htmlFor="forward-url" error={errors.forwardUrl} hint={<>
       Optional. RevenueDot sends every {store} notification, unchanged, to this URL as well. Running side by side with RevenueCat? Paste the
       {FORWARD_NAME[store]} from your RevenueCat app settings here, so both stay up to date while you switch.
-      {s.last_forward && <> Last forward: <span className="mono">{s.last_forward.status === 0 ? "no answer" : `HTTP ${s.last_forward.status}`}</span>, {fmt.ago(s.last_forward.at)}.</>}
+      {s.last_forward && <> Last forward: <span className="mono">{s.last_forward.status <= 0 ? "no answer" : `HTTP ${s.last_forward.status}`}</span>, {fmt.ago(s.last_forward.at)}.</>}
     </>}>
       <input id="forward-url" className="input mono" inputMode="url" placeholder="https://api.revenuecat.com/v1/incoming-webhooks/…" value={d.forwardUrl}
         aria-invalid={!!errors.forwardUrl} onChange={(e) => set({ forwardUrl: e.target.value })} />
